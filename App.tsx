@@ -55,16 +55,14 @@ import {
   ClipboardIcon
 } from '@heroicons/react/24/outline';
 import L from 'leaflet';
-import 'leaflet.markercluster';
 import ReactQuill from 'react-quill';
-import { Hauler, HaulerStatus, HaulerType, BrokerContact, HaulerAttachment, SearchResult, EmailTemplate, SavedSearch, Task, TaskStatus } from './types';
-import { MOCK_BROKERS, BID_TEMPLATE_CURRENT, BID_TEMPLATE_NEW, EMAIL_SIGNATURE, TEMPLATE_MISSED_PICKUP, TEMPLATE_RFQ_COMPACTOR, TEMPLATE_BILLING_INQUIRY } from './constants';
+import { Hauler, HaulerStatus, HaulerType, BrokerContact, HaulerAttachment, SearchResult, EmailTemplate, SavedSearch } from './types';
+import { MOCK_BROKERS, BID_TEMPLATE_CURRENT, BID_TEMPLATE_NEW, EMAIL_SIGNATURE } from './constants';
 
 const SENDER_EMAIL = "chrisw@wasteexperts.com";
 const DB_STORAGE_KEY = 'hauler_hunter_db_v1';
 const TEMPLATE_STORAGE_KEY = 'hauler_hunter_templates_v1';
 const SEARCH_STORAGE_KEY = 'hauler_hunter_saved_searches_v1';
-const TASK_STORAGE_KEY = 'hauler_hunter_tasks_v1';
 
 const PLACEHOLDERS = [
   { key: '{haulerName}', label: 'Hauler Name' },
@@ -95,27 +93,6 @@ const DEFAULT_TEMPLATES: EmailTemplate[] = [
     category: HaulerType.NEW,
     subject: 'New Price Opportunity - Waste & Recycling Services - {address}',
     content: BID_TEMPLATE_NEW
-  },
-  {
-    id: 't-missed-pickup',
-    name: 'Missed Pickup Report',
-    category: HaulerType.CURRENT,
-    subject: 'MISSED PICKUP: {address} - {haulerName}',
-    content: TEMPLATE_MISSED_PICKUP
-  },
-  {
-    id: 't-rfq-compactor',
-    name: 'Compactor RFQ',
-    category: HaulerType.NEW,
-    subject: 'Compactor Quote Request: {address}',
-    content: TEMPLATE_RFQ_COMPACTOR
-  },
-  {
-    id: 't-billing-inquiry',
-    name: 'Billing Inquiry',
-    category: HaulerType.CURRENT,
-    subject: 'Billing Question: {accountInfo} - {address}',
-    content: TEMPLATE_BILLING_INQUIRY
   }
 ];
 
@@ -210,23 +187,6 @@ const App: React.FC = () => {
   });
   const [showSavedSearches, setShowSavedSearches] = useState(false);
 
-  const [tasks, setTasks] = useState<Task[]>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(TASK_STORAGE_KEY);
-      if (saved) {
-        try { return JSON.parse(saved); } catch (e) { console.error(e); }
-      }
-    }
-    return [];
-  });
-  const [isManagingTasks, setIsManagingTasks] = useState(false);
-  const [newTaskData, setNewTaskData] = useState<{ title: string; dueDate: string; haulerId: string; haulerName: string }>({
-    title: '',
-    dueDate: new Date().toISOString().split('T')[0],
-    haulerId: '',
-    haulerName: ''
-  });
-
   const [selectedHauler, setSelectedHauler] = useState<Hauler | null>(null);
   const [isAddingHauler, setIsAddingHauler] = useState(false);
   const [newHaulerData, setNewHaulerData] = useState<BrokerContact>({
@@ -273,7 +233,6 @@ const App: React.FC = () => {
   const templateBodyRef = useRef<HTMLTextAreaElement>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  const clusterGroupRef = useRef<any>(null);
   const markersRef = useRef<L.Marker[]>([]);
   const draftQuillRef = useRef<any>(null);
 
@@ -323,7 +282,6 @@ const App: React.FC = () => {
         setIsManagingDb(false);
         setIsManagingTemplates(false);
         setIsAddingHauler(false);
-        setIsManagingTasks(false);
         setEditingTemplate(null);
         setShowDbSearchResults(false);
         setEditingBrokerIndex(null);
@@ -345,10 +303,6 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem(SEARCH_STORAGE_KEY, JSON.stringify(savedSearches));
   }, [savedSearches]);
-
-  useEffect(() => {
-    localStorage.setItem(TASK_STORAGE_KEY, JSON.stringify(tasks));
-  }, [tasks]);
 
   useEffect(() => {
     if (isDarkMode) {
@@ -406,26 +360,14 @@ const App: React.FC = () => {
       if (viewMode !== 'map' && mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
-        clusterGroupRef.current = null;
       }
     };
   }, [viewMode]);
 
   useEffect(() => {
     if (viewMode === 'map' && mapInstanceRef.current) {
-      // Clear existing clusters and markers
-      if (clusterGroupRef.current) {
-        clusterGroupRef.current.clearLayers();
-      } else {
-        // @ts-ignore
-        clusterGroupRef.current = L.markerClusterGroup({
-          showCoverageOnHover: false,
-          zoomToBoundsOnClick: true,
-          spiderfyOnMaxZoom: true,
-          chunkedLoading: true
-        });
-        mapInstanceRef.current.addLayer(clusterGroupRef.current);
-      }
+      markersRef.current.forEach(m => m.remove());
+      markersRef.current = [];
 
       const bounds = L.latLngBounds([]);
       let hasPoints = false;
@@ -440,7 +382,7 @@ const App: React.FC = () => {
               iconSize: [32, 32],
               iconAnchor: [16, 32]
             })
-          });
+          }).addTo(mapInstanceRef.current!);
 
           marker.bindPopup(`
             <div class="p-2">
@@ -460,7 +402,7 @@ const App: React.FC = () => {
              }
           });
 
-          clusterGroupRef.current.addLayer(marker);
+          markersRef.current.push(marker);
           bounds.extend(h.coordinates);
         }
       });
@@ -604,45 +546,6 @@ const App: React.FC = () => {
     if (!selectedHauler) return;
     const updated = selectedHauler.attachments.filter((_, i) => i !== index);
     updateHaulerField(selectedHauler.id, 'attachments', updated);
-  };
-
-  const handleAddTask = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTaskData.title.trim()) return;
-
-    const newTask: Task = {
-      id: `task-${Date.now()}`,
-      haulerId: newTaskData.haulerId,
-      haulerName: newTaskData.haulerName,
-      title: newTaskData.title,
-      dueDate: newTaskData.dueDate,
-      status: TaskStatus.PENDING,
-      createdAt: new Date().toISOString()
-    };
-
-    setTasks(prev => [newTask, ...prev]);
-    setNewTaskData({
-      title: '',
-      dueDate: new Date().toISOString().split('T')[0],
-      haulerId: '',
-      haulerName: ''
-    });
-    setImportFeedback("Task added successfully.");
-    setTimeout(() => setImportFeedback(null), 3000);
-  };
-
-  const handleToggleTaskStatus = (taskId: string) => {
-    setTasks(prev => prev.map(t => {
-      if (t.id === taskId) {
-        const newStatus = t.status === TaskStatus.COMPLETED ? TaskStatus.PENDING : TaskStatus.COMPLETED;
-        return { ...t, status: newStatus };
-      }
-      return t;
-    }));
-  };
-
-  const handleDeleteTask = (taskId: string) => {
-    setTasks(prev => prev.filter(t => t.id !== taskId));
   };
 
   const applyTemplateToDraft = (template: EmailTemplate) => {
@@ -1109,15 +1012,6 @@ const App: React.FC = () => {
                 {isDarkMode ? <SunIcon className="w-5 h-5" /> : <MoonIcon className="w-5 h-5" />}
               </button>
               <button 
-                onClick={() => setIsManagingTasks(true)} 
-                className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-md text-indigo-700 dark:text-indigo-400 text-[10px] font-black uppercase hover:bg-indigo-100 transition shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-500 outline-none"
-              >
-                <ListBulletIcon className="w-4 h-4" aria-hidden="true" /> Tasks
-                {tasks.filter(t => t.status === TaskStatus.PENDING).length > 0 && (
-                  <span className="flex h-2 w-2 rounded-full bg-red-500"></span>
-                )}
-              </button>
-              <button 
                 onClick={() => setIsManagingTemplates(true)} 
                 className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-md text-amber-700 dark:text-amber-400 text-[10px] font-black uppercase hover:bg-amber-100 transition shadow-sm focus-visible:ring-2 focus-visible:ring-amber-500 outline-none"
               >
@@ -1414,26 +1308,6 @@ const App: React.FC = () => {
                         </div>
                         <div className="flex items-center gap-2 w-full md:w-auto border-t md:border-t-0 pt-4 md:pt-0">
                           <div className="flex items-center gap-2 mr-2 border-r border-gray-200 dark:border-gray-700 pr-3">
-                            <button 
-                              onClick={() => {
-                                setNewTaskData({
-                                  title: '',
-                                  dueDate: new Date().toISOString().split('T')[0],
-                                  haulerId: h.id,
-                                  haulerName: h.name
-                                });
-                                setIsManagingTasks(true);
-                              }}
-                              className="p-2.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 transition focus-visible:ring-2 focus-visible:ring-indigo-400 outline-none relative"
-                              title="Add Follow-up Task"
-                            >
-                              <PlusIcon className="w-5 h-5" aria-hidden="true" />
-                              {tasks.filter(t => t.haulerId === h.id && t.status === TaskStatus.PENDING).length > 0 && (
-                                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white dark:border-gray-800">
-                                  {tasks.filter(t => t.haulerId === h.id && t.status === TaskStatus.PENDING).length}
-                                </span>
-                              )}
-                            </button>
                             <button 
                               onClick={() => handleCopyBrokerInfo(h)}
                               className="p-2.5 bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-600 transition focus-visible:ring-2 focus-visible:ring-gray-400 outline-none"
@@ -1878,127 +1752,6 @@ const App: React.FC = () => {
               </div>
               <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-indigo-700 shadow-xl focus-visible:ring-2 focus-visible:ring-indigo-400 outline-none">PERSIST TO DATABASE</button>
             </form>
-          </div>
-        </div>
-      )}
-      {/* Task Management Modal */}
-      {isManagingTasks && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/80 backdrop-blur-md transition-all" role="dialog" aria-modal="true" aria-labelledby="tasks-title">
-          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl w-full max-w-4xl h-[85vh] overflow-hidden border border-white/20 flex flex-col">
-            <div className="bg-gray-50 dark:bg-gray-900/50 px-8 py-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
-              <div>
-                <h3 id="tasks-title" className="text-xl font-black tracking-tight flex items-center gap-2">
-                  <ListBulletIcon className="w-6 h-6 text-indigo-600" /> Task Management
-                </h3>
-                <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mt-1">Track follow-ups and bid deadlines</p>
-              </div>
-              <button onClick={() => setIsManagingTasks(false)} className="text-gray-500 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full focus-visible:ring-2 focus-visible:ring-gray-400 outline-none">
-                <XMarkIcon className="w-7 h-7" aria-hidden="true" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
-              {/* Add Task Sidebar */}
-              <div className="w-full md:w-80 border-r border-gray-100 dark:border-gray-700 p-6 bg-gray-50/30 dark:bg-gray-900/30">
-                <h4 className="text-xs font-black uppercase text-gray-600 dark:text-gray-400 mb-6 tracking-widest">Create New Task</h4>
-                <form onSubmit={handleAddTask} className="space-y-5">
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-gray-500 mb-2">Task Title</label>
-                    <input 
-                      type="text" 
-                      value={newTaskData.title} 
-                      onChange={e => setNewTaskData({...newTaskData, title: e.target.value})}
-                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-bold outline-none focus:border-indigo-500 transition-all"
-                      placeholder="e.g. Follow up on bid"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-gray-500 mb-2">Due Date</label>
-                    <input 
-                      type="date" 
-                      value={newTaskData.dueDate} 
-                      onChange={e => setNewTaskData({...newTaskData, dueDate: e.target.value})}
-                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-bold outline-none focus:border-indigo-500 transition-all"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-gray-500 mb-2">Associate Hauler (Optional)</label>
-                    <select 
-                      value={newTaskData.haulerId}
-                      onChange={e => {
-                        const h = haulers.find(h => h.id === e.target.value);
-                        setNewTaskData({...newTaskData, haulerId: e.target.value, haulerName: h?.name || ''});
-                      }}
-                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-bold outline-none focus:border-indigo-500 transition-all"
-                    >
-                      <option value="">No Hauler</option>
-                      {haulers.map(h => (
-                        <option key={h.id} value={h.id}>{h.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 shadow-lg transition-all">
-                    Create Task
-                  </button>
-                </form>
-              </div>
-
-              {/* Task List */}
-              <div className="flex-1 overflow-y-auto p-8">
-                <div className="flex items-center justify-between mb-8">
-                  <h4 className="text-xs font-black uppercase text-gray-600 dark:text-gray-400 tracking-widest">Active Tasks ({tasks.length})</h4>
-                  <div className="flex gap-2">
-                    {/* Filters could go here */}
-                  </div>
-                </div>
-
-                {tasks.length === 0 ? (
-                  <div className="py-20 text-center">
-                    <CheckCircleIcon className="w-16 h-16 text-gray-200 dark:text-gray-700 mx-auto mb-4" />
-                    <p className="text-gray-400 text-sm font-bold uppercase tracking-widest">No tasks scheduled</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {tasks.map(task => {
-                      const isOverdue = new Date(task.dueDate) < new Date() && task.status !== TaskStatus.COMPLETED;
-                      return (
-                        <div key={task.id} className={`group bg-white dark:bg-gray-900 rounded-2xl border p-5 flex items-center justify-between gap-4 transition-all ${task.status === TaskStatus.COMPLETED ? 'opacity-60 grayscale' : 'hover:border-indigo-300 dark:hover:border-indigo-700 shadow-sm'}`}>
-                          <div className="flex items-center gap-4 flex-1 min-w-0">
-                            <button 
-                              onClick={() => handleToggleTaskStatus(task.id)}
-                              className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${task.status === TaskStatus.COMPLETED ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 dark:border-gray-600 hover:border-indigo-500'}`}
-                            >
-                              {task.status === TaskStatus.COMPLETED && <CheckIcon className="w-4 h-4" />}
-                            </button>
-                            <div className="min-w-0">
-                              <h5 className={`text-sm font-black truncate ${task.status === TaskStatus.COMPLETED ? 'line-through text-gray-400' : ''}`}>{task.title}</h5>
-                              <div className="flex items-center gap-3 mt-1">
-                                <span className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${isOverdue ? 'text-red-500' : 'text-gray-500'}`}>
-                                  <ClockIcon className="w-3 h-3" /> {task.dueDate}
-                                </span>
-                                {task.haulerName && (
-                                  <span className="text-[10px] font-black uppercase tracking-wider text-indigo-500 flex items-center gap-1">
-                                    <UserIcon className="w-3 h-3" /> {task.haulerName}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          <button 
-                            onClick={() => handleDeleteTask(task.id)}
-                            className="p-2 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-                          >
-                            <TrashIcon className="w-5 h-5" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
         </div>
       )}

@@ -1,0 +1,7 @@
+{
+  "name": "Hauler Helper",
+  "description": "A professional tool to identify commercial waste haulers by location, lookup broker contacts, and automate bid request outreach with custom templates.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

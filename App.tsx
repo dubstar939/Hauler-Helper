@@ -55,6 +55,7 @@ import {
   ClipboardIcon
 } from '@heroicons/react/24/outline';
 import L from 'leaflet';
+import 'leaflet.markercluster';
 import ReactQuill from 'react-quill';
 import { Hauler, HaulerStatus, HaulerType, BrokerContact, HaulerAttachment, SearchResult, EmailTemplate, SavedSearch, Task, TaskStatus } from './types';
 import { MOCK_BROKERS, BID_TEMPLATE_CURRENT, BID_TEMPLATE_NEW, EMAIL_SIGNATURE, TEMPLATE_MISSED_PICKUP, TEMPLATE_RFQ_COMPACTOR, TEMPLATE_BILLING_INQUIRY } from './constants';
@@ -272,6 +273,7 @@ const App: React.FC = () => {
   const templateBodyRef = useRef<HTMLTextAreaElement>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
+  const clusterGroupRef = useRef<any>(null);
   const markersRef = useRef<L.Marker[]>([]);
   const draftQuillRef = useRef<any>(null);
 
@@ -404,14 +406,26 @@ const App: React.FC = () => {
       if (viewMode !== 'map' && mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
+        clusterGroupRef.current = null;
       }
     };
   }, [viewMode]);
 
   useEffect(() => {
     if (viewMode === 'map' && mapInstanceRef.current) {
-      markersRef.current.forEach(m => m.remove());
-      markersRef.current = [];
+      // Clear existing clusters and markers
+      if (clusterGroupRef.current) {
+        clusterGroupRef.current.clearLayers();
+      } else {
+        // @ts-ignore
+        clusterGroupRef.current = L.markerClusterGroup({
+          showCoverageOnHover: false,
+          zoomToBoundsOnClick: true,
+          spiderfyOnMaxZoom: true,
+          chunkedLoading: true
+        });
+        mapInstanceRef.current.addLayer(clusterGroupRef.current);
+      }
 
       const bounds = L.latLngBounds([]);
       let hasPoints = false;
@@ -426,7 +440,7 @@ const App: React.FC = () => {
               iconSize: [32, 32],
               iconAnchor: [16, 32]
             })
-          }).addTo(mapInstanceRef.current!);
+          });
 
           marker.bindPopup(`
             <div class="p-2">
@@ -446,7 +460,7 @@ const App: React.FC = () => {
              }
           });
 
-          markersRef.current.push(marker);
+          clusterGroupRef.current.addLayer(marker);
           bounds.extend(h.coordinates);
         }
       });

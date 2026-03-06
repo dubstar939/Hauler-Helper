@@ -55,7 +55,8 @@ import {
   ClipboardIcon
 } from '@heroicons/react/24/outline';
 import L from 'leaflet';
-import ReactQuill from 'react-quill';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 import { Hauler, HaulerStatus, HaulerType, BrokerContact, HaulerAttachment, SearchResult, EmailTemplate, SavedSearch } from './types';
 import { MOCK_BROKERS, BID_TEMPLATE_CURRENT, BID_TEMPLATE_NEW, EMAIL_SIGNATURE } from './constants';
 

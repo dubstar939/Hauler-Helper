@@ -47,6 +47,23 @@ export interface SavedSearch {
   accountInfo: string;
 }
 
+export enum TaskStatus {
+  PENDING = 'Pending',
+  COMPLETED = 'Completed',
+  OVERDUE = 'Overdue'
+}
+
+export interface Task {
+  id: string;
+  haulerId: string;
+  haulerName: string;
+  title: string;
+  description?: string;
+  dueDate: string;
+  status: TaskStatus;
+  createdAt: string;
+}
+
 export interface Hauler {
   id: string;
   name: string;

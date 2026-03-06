@@ -25,6 +25,36 @@ We are seeking pricing for a customer located on {address}. If the area referenc
 
 {signature}`;
 
+export const TEMPLATE_MISSED_PICKUP = `Hi {haulerName},
+
+We are reporting a missed pickup for the following location:
+Address: {address}
+Account: {accountInfo}
+
+Please let us know when the recovery is scheduled.
+
+{signature}`;
+
+export const TEMPLATE_RFQ_COMPACTOR = `Hi {haulerName},
+
+We are seeking a quote for a compactor installation at:
+Location: {address}
+Client Ref: {clientRef}
+
+Please provide equipment specs and monthly rental/haul rates.
+
+{signature}`;
+
+export const TEMPLATE_BILLING_INQUIRY = `Hi {haulerName},
+
+We have a question regarding the recent invoice for:
+Account: {accountInfo}
+Location: {address}
+
+Please review and provide clarification.
+
+{signature}`;
+
 /**
  * Registry of known brokers and haulers extracted from the provided PDF document.
  */
@@ -45,6 +75,17 @@ export const MOCK_BROKERS: any[] = [
   { haulerName: 'Meridian Waste (Francesa Weir)', brokerEmail: 'fwier@meridianwaste.com', notes: 'FL Broker Contact', states: ['FL'] },
   { haulerName: 'Active Waste Solutions', brokerEmail: 'lmattingly@activewastesolutions.com', notes: 'NC/SC Areas', states: ['NC', 'SC'] },
   { haulerName: 'JJ\'s Waste and Recycling', brokerEmail: 'yenny.spainhower@jjswaste.com', notes: 'FL Area', states: ['FL'] },
+  { haulerName: 'Recology (Western)', brokerEmail: 'info@recology.com', notes: 'WA, OR, CA Regional', states: ['WA', 'OR', 'CA'] },
+  { haulerName: 'Rumpke Waste & Recycling', brokerEmail: 'broker.desk@rumpke.com', notes: 'OH, KY, IN, WV', states: ['OH', 'KY', 'IN', 'WV'] },
+  { haulerName: 'Kimble Recycling', brokerEmail: 'sales@kimble-recycling.com', notes: 'OH Regional', states: ['OH'] },
+  { haulerName: 'Burrtec Waste Industries', brokerEmail: 'brokers@burrtec.com', notes: 'CA Inland Empire', states: ['CA'] },
+  { haulerName: 'Athens Services', brokerEmail: 'info@athensservices.com', notes: 'CA Los Angeles Area', states: ['CA'] },
+  { haulerName: 'Texas Disposal Systems', brokerEmail: 'brokers@texasdisposal.com', notes: 'TX Central/Austin', states: ['TX'] },
+  { haulerName: 'Borden Waste-Away', brokerEmail: 'service@wasteawaygroup.com', notes: 'IN, MI Regional', states: ['IN', 'MI'] },
+  { haulerName: 'Lakeshore Recycling (LRS)', brokerEmail: 'brokers@lrsrecycles.com', notes: 'IL, WI, MN', states: ['IL', 'WI', 'MN'] },
+  { haulerName: 'Waste Management (Pacific)', brokerEmail: 'pnwbroker@wm.com', notes: 'WA, OR, ID, AK', states: ['WA', 'OR', 'ID', 'AK'] },
+  { haulerName: 'Republic Services (West)', brokerEmail: 'westregionbrokers@republicservices.com', notes: 'AZ, NV, UT', states: ['AZ', 'NV', 'UT'] },
+  { haulerName: 'Waste Connections (Mountain)', brokerEmail: 'mountainbrokers@wasteconnections.com', notes: 'CO, WY, MT', states: ['CO', 'WY', 'MT'] },
   
   // GFL Regions
   { haulerName: 'GFL Region 1', brokerEmail: 'gflnapricingusregion1@gfl.com', notes: 'AL, FL, GA', states: ['AL', 'FL', 'GA'] },

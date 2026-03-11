@@ -57,13 +57,14 @@ import {
 import L from 'leaflet';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
-import { Hauler, HaulerStatus, HaulerType, BrokerContact, HaulerAttachment, SearchResult, EmailTemplate, SavedSearch } from './types';
+import { Hauler, HaulerStatus, HaulerType, BrokerContact, HaulerAttachment, SearchResult, EmailTemplate, SavedSearch, Task, TaskStatus } from './types';
 import { MOCK_BROKERS, BID_TEMPLATE_CURRENT, BID_TEMPLATE_NEW, EMAIL_SIGNATURE } from './constants';
 
 const SENDER_EMAIL = "chrisw@wasteexperts.com";
 const DB_STORAGE_KEY = 'hauler_hunter_db_v1';
 const TEMPLATE_STORAGE_KEY = 'hauler_hunter_templates_v1';
 const SEARCH_STORAGE_KEY = 'hauler_hunter_saved_searches_v1';
+const TASK_STORAGE_KEY = 'hauler_hunter_tasks_v1';
 
 const PLACEHOLDERS = [
   { key: '{haulerName}', label: 'Hauler Name' },
@@ -203,6 +204,16 @@ const App: React.FC = () => {
   });
   const [showSavedSearches, setShowSavedSearches] = useState(false);
 
+  const [tasks, setTasks] = useState<Task[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(TASK_STORAGE_KEY);
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) { console.error(e); }
+      }
+    }
+    return [];
+  });
+
   const [selectedHauler, setSelectedHauler] = useState<Hauler | null>(null);
   const [isAddingHauler, setIsAddingHauler] = useState(false);
   const [newHaulerData, setNewHaulerData] = useState<BrokerContact>({
@@ -216,6 +227,8 @@ const App: React.FC = () => {
   const [isDrafting, setIsDrafting] = useState(false);
   const [isManagingDb, setIsManagingDb] = useState(false);
   const [isManagingTemplates, setIsManagingTemplates] = useState(false);
+  const [isManagingTasks, setIsManagingTasks] = useState(false);
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
   
   // Database Editing State
@@ -302,6 +315,8 @@ const App: React.FC = () => {
         setShowDbSearchResults(false);
         setEditingBrokerIndex(null);
         setShowSavedSearches(false);
+        setIsManagingTasks(false);
+        setIsCreatingTask(false);
       }
     };
     window.addEventListener('keydown', handleEsc);
@@ -319,6 +334,10 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem(SEARCH_STORAGE_KEY, JSON.stringify(savedSearches));
   }, [savedSearches]);
+
+  useEffect(() => {
+    localStorage.setItem(TASK_STORAGE_KEY, JSON.stringify(tasks));
+  }, [tasks]);
 
   useEffect(() => {
     if (isDarkMode) {
@@ -428,6 +447,53 @@ const App: React.FC = () => {
       }
     }
   }, [sortedHaulers, viewMode]);
+
+  const [newTaskData, setNewTaskData] = useState<Partial<Task>>({
+    title: '',
+    description: '',
+    dueDate: new Date().toISOString().split('T')[0],
+    status: TaskStatus.PENDING
+  });
+
+  const handleCreateTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedHauler || !newTaskData.title) return;
+
+    const task: Task = {
+      id: `task-${Date.now()}`,
+      haulerId: selectedHauler.id,
+      haulerName: selectedHauler.name,
+      title: newTaskData.title,
+      description: newTaskData.description,
+      dueDate: newTaskData.dueDate || new Date().toISOString().split('T')[0],
+      status: TaskStatus.PENDING,
+      createdAt: new Date().toISOString()
+    };
+
+    setTasks(prev => [task, ...prev]);
+    setIsCreatingTask(false);
+    setNewTaskData({
+      title: '',
+      description: '',
+      dueDate: new Date().toISOString().split('T')[0],
+      status: TaskStatus.PENDING
+    });
+    setImportFeedback(`Task created for ${selectedHauler.name}`);
+    setTimeout(() => setImportFeedback(null), 3000);
+  };
+
+  const handleUpdateTaskStatus = (taskId: string, newStatus: TaskStatus) => {
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+    setImportFeedback("Task status updated.");
+    setTimeout(() => setImportFeedback(null), 2000);
+  };
+
+  const handleDeleteTask = (taskId: string) => {
+    if (!window.confirm("Delete this task?")) return;
+    setTasks(prev => prev.filter(t => t.id !== taskId));
+    setImportFeedback("Task deleted.");
+    setTimeout(() => setImportFeedback(null), 2000);
+  };
 
   const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
 
@@ -1077,6 +1143,12 @@ const App: React.FC = () => {
                 {isDarkMode ? <SunIcon className="w-5 h-5" /> : <MoonIcon className="w-5 h-5" />}
               </button>
               <button 
+                onClick={() => setIsManagingTasks(true)} 
+                className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-md text-indigo-700 dark:text-indigo-400 text-[10px] font-black uppercase hover:bg-indigo-100 transition shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-500 outline-none"
+              >
+                <CheckBadgeIcon className="w-4 h-4" aria-hidden="true" /> Tasks ({tasks.filter(t => t.status === TaskStatus.PENDING).length})
+              </button>
+              <button 
                 onClick={() => setIsManagingTemplates(true)} 
                 className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-md text-amber-700 dark:text-amber-400 text-[10px] font-black uppercase hover:bg-amber-100 transition shadow-sm focus-visible:ring-2 focus-visible:ring-amber-500 outline-none"
               >
@@ -1351,6 +1423,11 @@ const App: React.FC = () => {
                               <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.type === HaulerType.CURRENT ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
                                 {h.type} Partner
                               </span>
+                              {tasks.filter(t => t.haulerId === h.id && t.status === TaskStatus.PENDING).length > 0 && (
+                                <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 flex items-center gap-1">
+                                  <ClockIcon className="w-2.5 h-2.5" /> {tasks.filter(t => t.haulerId === h.id && t.status === TaskStatus.PENDING).length} Tasks
+                                </span>
+                              )}
                             </div>
                           </div>
                           <div className="flex flex-wrap items-center gap-5 text-sm text-gray-600 dark:text-gray-400">
@@ -1392,6 +1469,13 @@ const App: React.FC = () => {
                               </button>
                             )}
                           </div>
+                          <button 
+                            onClick={() => { setSelectedHauler(h); setIsCreatingTask(true); }} 
+                            className="p-2.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 transition focus-visible:ring-2 focus-visible:ring-indigo-400 outline-none"
+                            title="Create Follow-up Task"
+                          >
+                            <CheckBadgeIcon className="w-5 h-5" aria-hidden="true" />
+                          </button>
                           <button 
                             onClick={() => handleDeleteHauler(h)} 
                             className="p-2.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-100 transition focus-visible:ring-2 focus-visible:ring-red-400 outline-none"
@@ -1784,6 +1868,114 @@ const App: React.FC = () => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Task Management Modal */}
+      {isManagingTasks && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/80 backdrop-blur-md transition-all" role="dialog" aria-modal="true" aria-labelledby="tasks-title">
+          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl w-full max-w-4xl h-[85vh] overflow-hidden border border-white/20 flex flex-col">
+            <div className="bg-gray-50 dark:bg-gray-900/50 px-8 py-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
+              <div className="flex items-center gap-4">
+                <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg"><CheckBadgeIcon className="w-7 h-7" aria-hidden="true" /></div>
+                <div>
+                  <h3 id="tasks-title" className="text-2xl font-black tracking-tight">Follow-up Tasks</h3>
+                  <p className="text-[10px] text-gray-600 dark:text-gray-400 font-bold uppercase tracking-widest">{tasks.length} Active Tasks</p>
+                </div>
+              </div>
+              <button onClick={() => setIsManagingTasks(false)} className="text-gray-500 p-2 hover:bg-gray-100 rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-gray-400 outline-none" aria-label="Close tasks">
+                <XMarkIcon className="w-7 h-7" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-8">
+              {tasks.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                  <CheckCircleIcon className="w-16 h-16 mb-4 opacity-20" />
+                  <p className="text-sm font-bold uppercase tracking-widest">No follow-up tasks scheduled</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4">
+                  {tasks.map(task => (
+                    <div key={task.id} className={`p-6 rounded-2xl border transition-all flex items-center justify-between gap-6 ${task.status === TaskStatus.COMPLETED ? 'bg-gray-50 dark:bg-gray-900/30 border-gray-100 dark:border-gray-800 opacity-60' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 hover:border-indigo-400 shadow-sm'}`}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 mb-1">
+                          <h4 className={`text-base font-black tracking-tight truncate ${task.status === TaskStatus.COMPLETED ? 'line-through' : ''}`}>{task.title}</h4>
+                          <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider ${task.status === TaskStatus.PENDING ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
+                            {task.status}
+                          </span>
+                        </div>
+                        <p className="text-xs text-indigo-600 dark:text-indigo-400 font-bold mb-2">Hauler: {task.haulerName}</p>
+                        {task.description && <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 line-clamp-2">{task.description}</p>}
+                        <div className="flex items-center gap-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                          <span className="flex items-center gap-1"><ClockIcon className="w-3.5 h-3.5" /> Due: {task.dueDate}</span>
+                          <span className="flex items-center gap-1"><PlusIcon className="w-3.5 h-3.5" /> Created: {new Date(task.createdAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {task.status === TaskStatus.PENDING ? (
+                          <button 
+                            onClick={() => handleUpdateTaskStatus(task.id, TaskStatus.COMPLETED)}
+                            className="p-3 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-xl hover:bg-green-100 transition focus-visible:ring-2 focus-visible:ring-green-400 outline-none"
+                            title="Mark as Completed"
+                          >
+                            <CheckIcon className="w-5 h-5" />
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={() => handleUpdateTaskStatus(task.id, TaskStatus.PENDING)}
+                            className="p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-xl hover:bg-amber-100 transition focus-visible:ring-2 focus-visible:ring-amber-400 outline-none"
+                            title="Mark as Pending"
+                          >
+                            <ArrowUturnLeftIcon className="w-5 h-5" />
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => handleDeleteTask(task.id)}
+                          className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-100 transition focus-visible:ring-2 focus-visible:ring-red-400 outline-none"
+                          title="Delete Task"
+                        >
+                          <TrashIcon className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Task Modal */}
+      {isCreatingTask && selectedHauler && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/80 backdrop-blur-md transition-all" role="dialog" aria-modal="true" aria-labelledby="create-task-title">
+          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-white/20">
+            <div className="bg-gray-50 dark:bg-gray-900/50 px-8 py-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
+              <h3 id="create-task-title" className="text-xl font-black tracking-tight">Schedule Follow-up</h3>
+              <button onClick={() => setIsCreatingTask(false)} className="text-gray-500 p-2 hover:bg-gray-100 rounded-full focus-visible:ring-2 focus-visible:ring-gray-400 outline-none" aria-label="Close form">
+                <XMarkIcon className="w-7 h-7" aria-hidden="true" />
+              </button>
+            </div>
+            <form onSubmit={handleCreateTask} className="p-8 space-y-6">
+              <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800 mb-2">
+                <p className="text-[10px] font-black uppercase text-indigo-600 mb-1">Related Hauler</p>
+                <p className="text-sm font-bold text-gray-900 dark:text-white">{selectedHauler.name}</p>
+              </div>
+              <div>
+                <label htmlFor="task-title" className="block text-xs font-bold uppercase text-gray-600 dark:text-gray-400 mb-2 tracking-widest">Task Title</label>
+                <input id="task-title" type="text" value={newTaskData.title} onChange={e => setNewTaskData({...newTaskData, title: e.target.value})} className="w-full px-5 py-3 rounded-xl border-2 border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-bold outline-none focus:border-indigo-500 transition-all shadow-sm" placeholder="e.g. Follow up on pricing RFP" required />
+              </div>
+              <div>
+                <label htmlFor="task-due" className="block text-xs font-bold uppercase text-gray-600 dark:text-gray-400 mb-2 tracking-widest">Due Date</label>
+                <input id="task-due" type="date" value={newTaskData.dueDate} onChange={e => setNewTaskData({...newTaskData, dueDate: e.target.value})} className="w-full px-5 py-3 rounded-xl border-2 border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-bold outline-none focus:border-indigo-500 transition-all shadow-sm" required />
+              </div>
+              <div>
+                <label htmlFor="task-desc" className="block text-xs font-bold uppercase text-gray-600 dark:text-gray-400 mb-2 tracking-widest">Notes / Description</label>
+                <textarea id="task-desc" value={newTaskData.description} onChange={e => setNewTaskData({...newTaskData, description: e.target.value})} rows={3} className="w-full px-5 py-4 rounded-xl border-2 border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium leading-relaxed outline-none focus:border-indigo-500 transition-all shadow-sm" placeholder="Add any specific details or reminders..." />
+              </div>
+              <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-indigo-700 shadow-xl focus-visible:ring-2 focus-visible:ring-indigo-400 outline-none">CREATE TASK</button>
+            </form>
           </div>
         </div>
       )}

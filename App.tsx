@@ -114,6 +114,21 @@ const formatFileSize = (bytes: number): string => {
 };
 
 /**
+ * Extracts a 2-letter state code from a location string (e.g., "Belleville, IL" -> "IL")
+ */
+const extractState = (loc: string): string | null => {
+  if (!loc) return null;
+  // Look for 2-letter uppercase words or words after a comma
+  const parts = loc.split(/[\s,]+/);
+  for (const part of parts) {
+    if (part.length === 2 && /^[A-Z]{2}$/i.test(part)) {
+      return part.toUpperCase();
+    }
+  }
+  return null;
+};
+
+/**
  * Utility to convert HTML from Quill to Plain Text for Outlook mailto: links
  */
 const htmlToPlainText = (html: string): string => {
@@ -720,6 +735,16 @@ const App: React.FC = () => {
     setTimeout(() => setImportFeedback(null), 2000);
   };
 
+  const handleDeleteBroker = (broker: BrokerContact) => {
+    if (!window.confirm(`Permanently delete "${broker.haulerName}" from the internal database?`)) return;
+    const targetEmailNormalized = broker.brokerEmail.trim().toLowerCase();
+    setBrokerList(prev => prev.filter(b => b.brokerEmail.trim().toLowerCase() !== targetEmailNormalized));
+    // Also remove from session list if it came from Broker List
+    setHaulers(prev => prev.filter(h => !(h.contactSource === 'Broker List' && h.email.trim().toLowerCase() === targetEmailNormalized)));
+    setImportFeedback(`Deleted "${broker.haulerName}" from database.`);
+    setTimeout(() => setImportFeedback(null), 3000);
+  };
+
   const addBrokerToSession = (broker: BrokerContact) => {
     const existing = haulers.find(h => h.email === broker.brokerEmail && h.contactSource === 'Broker List');
     if (existing) return existing;
@@ -812,13 +837,30 @@ const App: React.FC = () => {
     setIsSearching(true);
     setSearchStatus("Querying Internal Broker Registry...");
     setSearchPhase(1);
+    const searchState = extractState(location);
+    
     setTimeout(() => {
       const locLower = location.toLowerCase();
-      const filtered = brokerList.filter(broker => 
-        broker.haulerName.toLowerCase().includes(locLower) || 
-        (broker.notes?.toLowerCase().includes(locLower) ?? false) ||
-        (broker.states?.some(s => s.toLowerCase().includes(locLower)) ?? false)
-      );
+      const filtered = brokerList.filter(broker => {
+        const nameMatch = broker.haulerName.toLowerCase().includes(locLower);
+        const notesMatch = broker.notes?.toLowerCase().includes(locLower);
+        const stateMatch = broker.states?.some(s => s.toLowerCase().includes(locLower));
+        
+        // If we found a state in the search query, prioritize haulers that serve that state
+        if (searchState) {
+          const servesState = broker.states?.some(s => s.toUpperCase() === searchState);
+          const isNational = broker.notes?.toLowerCase().includes('all') || broker.notes?.toLowerCase().includes('national');
+          
+          // If the broker has a specific list of states and it doesn't include our search state,
+          // and it's not a national broker, we should probably exclude it unless there's a name/notes match
+          if (broker.states && broker.states.length > 0 && !servesState && !isNational) {
+            // Only allow if there's a very strong name or notes match
+            if (!nameMatch && !notesMatch) return false;
+          }
+        }
+
+        return nameMatch || notesMatch || stateMatch;
+      });
       const results: SearchResult[] = filtered.slice(0, 15).map(b => ({ name: b.haulerName, email: b.brokerEmail || '', website: '', snippet: b.notes || 'Local database match.' }));
       processResults(results, 'Broker List');
       setIsSearching(false);
@@ -832,6 +874,7 @@ const App: React.FC = () => {
     setIsSearching(true);
     setSearchStatus("Performing Deep Registry Scan...");
     setSearchPhase(1);
+    const searchState = extractState(location);
     
     setTimeout(() => {
       const locLower = location.toLowerCase();
@@ -845,6 +888,16 @@ const App: React.FC = () => {
         const isStateSearch = locLower.length === 2;
         const stateKeywordMatch = isStateSearch && broker.notes?.toLowerCase().includes(locLower);
         
+        // State-based filtering for accuracy
+        if (searchState) {
+          const servesState = broker.states?.some(s => s.toUpperCase() === searchState);
+          const isNational = broker.notes?.toLowerCase().includes('all') || broker.notes?.toLowerCase().includes('national');
+          
+          if (broker.states && broker.states.length > 0 && !servesState && !isNational) {
+            if (!nameMatch && !notesMatch) return false;
+          }
+        }
+
         return nameMatch || notesMatch || stateMatch || stateKeywordMatch;
       });
 
@@ -868,14 +921,25 @@ const App: React.FC = () => {
     setIsSearching(true);
     setSearchStatus("Scanning Nationwide Network...");
     setSearchPhase(1);
+    const searchState = extractState(location);
     
     setTimeout(() => {
       // Find all haulers that serve "All Areas" or have many states
-      const filtered = brokerList.filter(broker => 
-        broker.notes?.toLowerCase().includes('all') || 
-        broker.notes?.toLowerCase().includes('national') ||
-        (broker.states && broker.states.length > 5)
-      );
+      const filtered = brokerList.filter(broker => {
+        const isNational = broker.notes?.toLowerCase().includes('all') || 
+                          broker.notes?.toLowerCase().includes('national');
+        
+        // A hauler is considered "wide" if it's national or has more than 10 states (increased from 5)
+        const isWide = isNational || (broker.states && broker.states.length > 10);
+        
+        // If we have a search state, even "wide" haulers should be checked if they explicitly exclude it
+        if (searchState && broker.states && broker.states.length > 0) {
+          const servesState = broker.states?.some(s => s.toUpperCase() === searchState);
+          if (!servesState && !isNational) return false;
+        }
+
+        return isWide;
+      });
 
       const results: SearchResult[] = filtered.slice(0, 20).map(b => ({ 
         name: b.haulerName, 
@@ -1564,7 +1628,17 @@ const App: React.FC = () => {
                     )}
                     {broker.notes && <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-2 italic truncate">{broker.notes}</div>}
                   </div>
-                  <button onClick={() => composeEmailFromDb(broker)} className="px-5 py-2.5 bg-green-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-green-700 focus-visible:ring-2 focus-visible:ring-green-400 outline-none">COMPOSE</button>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => handleDeleteBroker(broker)} 
+                      className="p-2.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-100 transition focus-visible:ring-2 focus-visible:ring-red-400 outline-none"
+                      title="Delete from Database"
+                      aria-label={`Delete ${broker.haulerName} from database`}
+                    >
+                      <TrashIcon className="w-5 h-5" aria-hidden="true" />
+                    </button>
+                    <button onClick={() => composeEmailFromDb(broker)} className="px-5 py-2.5 bg-green-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-green-700 focus-visible:ring-2 focus-visible:ring-green-400 outline-none">COMPOSE</button>
+                  </div>
                 </div>
               ))}
             </div>

@@ -49,6 +49,7 @@ import {
   PencilIcon,
   BookmarkIcon,
   ClockIcon,
+  CalendarIcon,
   KeyIcon,
   ListBulletIcon,
   CommandLineIcon,
@@ -486,6 +487,13 @@ const App: React.FC = () => {
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
     setImportFeedback("Task status updated.");
     setTimeout(() => setImportFeedback(null), 2000);
+  };
+
+  const handleSort = (key: SortKey) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
   };
 
   const handleDeleteTask = (taskId: string) => {
@@ -1424,8 +1432,30 @@ const App: React.FC = () => {
                   <button onClick={handleResetFilters} className="mt-4 text-indigo-600 dark:text-indigo-400 text-xs font-black uppercase hover:underline">Clear all filters</button>
                 </div>
               ) : (
-                <ul className="space-y-4">
-                  {sortedHaulers.map((h) => {
+                <div className="space-y-2">
+                  <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-2 text-[10px] font-black uppercase tracking-widest text-gray-400">
+                    <div className="col-span-6 flex items-center gap-4">
+                      <button onClick={() => handleSort('name')} className={`flex items-center gap-1 hover:text-gray-600 transition-colors ${sortConfig.key === 'name' ? 'text-green-600' : ''}`}>
+                        Hauler Name {sortConfig.key === 'name' && (sortConfig.direction === 'asc' ? <ChevronUpIcon className="w-3 h-3" /> : <ChevronDownIcon className="w-3 h-3" />)}
+                      </button>
+                      <button onClick={() => handleSort('type')} className={`flex items-center gap-1 hover:text-gray-600 transition-colors ${sortConfig.key === 'type' ? 'text-green-600' : ''}`}>
+                        Type {sortConfig.key === 'type' && (sortConfig.direction === 'asc' ? <ChevronUpIcon className="w-3 h-3" /> : <ChevronDownIcon className="w-3 h-3" />)}
+                      </button>
+                    </div>
+                    <div className="col-span-2">
+                      <button onClick={() => handleSort('status')} className={`flex items-center gap-1 hover:text-gray-600 transition-colors ${sortConfig.key === 'status' ? 'text-green-600' : ''}`}>
+                        Status {sortConfig.key === 'status' && (sortConfig.direction === 'asc' ? <ChevronUpIcon className="w-3 h-3" /> : <ChevronDownIcon className="w-3 h-3" />)}
+                      </button>
+                    </div>
+                    <div className="col-span-2">
+                      <button onClick={() => handleSort('lastActionDate')} className={`flex items-center gap-1 hover:text-gray-600 transition-colors ${sortConfig.key === 'lastActionDate' ? 'text-green-600' : ''}`}>
+                        Last Action {sortConfig.key === 'lastActionDate' && (sortConfig.direction === 'asc' ? <ChevronUpIcon className="w-3 h-3" /> : <ChevronDownIcon className="w-3 h-3" />)}
+                      </button>
+                    </div>
+                    <div className="col-span-2 text-right">Actions</div>
+                  </div>
+                  <ul className="space-y-4">
+                    {sortedHaulers.map((h) => {
                     const inDb = isHaulerInDb(h.email);
                     return (
                       <li key={h.id} className="bg-white dark:bg-gray-800 rounded-2xl border p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm border-gray-100 dark:border-gray-700 hover:border-green-300/50 hover:shadow-md transition-all group">
@@ -1449,6 +1479,14 @@ const App: React.FC = () => {
                               <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.type === HaulerType.CURRENT ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
                                 {h.type} Partner
                               </span>
+                              <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.status === HaulerStatus.SENT ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : h.status === HaulerStatus.REPLIED ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-400'}`}>
+                                {h.status}
+                              </span>
+                              {h.lastActionDate && (
+                                <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-gray-50 text-gray-500 dark:bg-gray-900 dark:text-gray-500 flex items-center gap-1">
+                                  <CalendarIcon className="w-2.5 h-2.5" /> {h.lastActionDate}
+                                </span>
+                              )}
                               {tasks.filter(t => t.haulerId === h.id && t.status === TaskStatus.PENDING).length > 0 && (
                                 <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 flex items-center gap-1">
                                   <ClockIcon className="w-2.5 h-2.5" /> {tasks.filter(t => t.haulerId === h.id && t.status === TaskStatus.PENDING).length} Tasks
@@ -1526,6 +1564,7 @@ const App: React.FC = () => {
                     );
                   })}
                 </ul>
+              </div>
               )
             )}
 

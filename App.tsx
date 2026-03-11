@@ -904,13 +904,22 @@ const App: React.FC = () => {
     setSearchStatus("Querying Internal Broker Registry...");
     setSearchPhase(1);
     const searchState = extractState(location);
+    const locLower = location.toLowerCase();
+    const searchTerms = locLower.split(/[\s,]+/).filter(t => t.length > 1);
     
     setTimeout(() => {
-      const locLower = location.toLowerCase();
       const filtered = brokerList.filter(broker => {
-        const nameMatch = broker.haulerName.toLowerCase().includes(locLower);
-        const notesMatch = broker.notes?.toLowerCase().includes(locLower);
-        const stateMatch = broker.states?.some(s => s.toLowerCase().includes(locLower));
+        const nameLower = broker.haulerName.toLowerCase();
+        const notesLower = broker.notes?.toLowerCase() || '';
+        
+        // Check if any search term matches name or notes
+        const termMatch = searchTerms.some(term => 
+          nameLower.includes(term) || notesLower.includes(term)
+        );
+        
+        const stateMatch = broker.states?.some(s => 
+          searchTerms.some(term => s.toLowerCase().includes(term))
+        );
         
         // If we found a state in the search query, prioritize haulers that serve that state
         if (searchState) {
@@ -921,11 +930,14 @@ const App: React.FC = () => {
           // and it's not a national broker, we should probably exclude it unless there's a name/notes match
           if (broker.states && broker.states.length > 0 && !servesState && !isNational) {
             // Only allow if there's a very strong name or notes match
-            if (!nameMatch && !notesMatch) return false;
+            if (!nameLower.includes(locLower) && !notesLower.includes(locLower)) return false;
           }
+          
+          // If it serves the state, it's a good match
+          if (servesState) return true;
         }
 
-        return nameMatch || notesMatch || stateMatch;
+        return termMatch || stateMatch;
       });
       const results: SearchResult[] = filtered.slice(0, 15).map(b => ({ name: b.haulerName, email: b.brokerEmail || '', website: '', snippet: b.notes || 'Local database match.' }));
       processResults(results, 'Broker List');
@@ -941,18 +953,26 @@ const App: React.FC = () => {
     setSearchStatus("Performing Deep Registry Scan...");
     setSearchPhase(1);
     const searchState = extractState(location);
+    const locLower = location.toLowerCase();
+    const searchTerms = locLower.split(/[\s,]+/).filter(t => t.length > 1);
     
     setTimeout(() => {
-      const locLower = location.toLowerCase();
       // Deep search includes fuzzy matching and keyword expansion
       const filtered = brokerList.filter(broker => {
-        const nameMatch = broker.haulerName.toLowerCase().includes(locLower);
-        const notesMatch = broker.notes?.toLowerCase().includes(locLower);
-        const stateMatch = broker.states?.some(s => s.toLowerCase().includes(locLower));
+        const nameLower = broker.haulerName.toLowerCase();
+        const notesLower = broker.notes?.toLowerCase() || '';
+        
+        const termMatch = searchTerms.some(term => 
+          nameLower.includes(term) || notesLower.includes(term)
+        );
+        
+        const stateMatch = broker.states?.some(s => 
+          searchTerms.some(term => s.toLowerCase().includes(term))
+        );
         
         // Also check for common waste management terms if location is a state
-        const isStateSearch = locLower.length === 2;
-        const stateKeywordMatch = isStateSearch && broker.notes?.toLowerCase().includes(locLower);
+        const isStateSearch = locLower.length === 2 || searchState === locLower.toUpperCase();
+        const stateKeywordMatch = isStateSearch && notesLower.includes(locLower);
         
         // State-based filtering for accuracy
         if (searchState) {
@@ -960,11 +980,13 @@ const App: React.FC = () => {
           const isNational = broker.notes?.toLowerCase().includes('all') || broker.notes?.toLowerCase().includes('national');
           
           if (broker.states && broker.states.length > 0 && !servesState && !isNational) {
-            if (!nameMatch && !notesMatch) return false;
+            if (!nameLower.includes(locLower) && !notesLower.includes(locLower)) return false;
           }
+          
+          if (servesState) return true;
         }
 
-        return nameMatch || notesMatch || stateMatch || stateKeywordMatch;
+        return termMatch || stateMatch || stateKeywordMatch;
       });
 
       const results: SearchResult[] = filtered.slice(0, 25).map(b => ({ 
@@ -990,13 +1012,17 @@ const App: React.FC = () => {
     const searchState = extractState(location);
     
     setTimeout(() => {
-      // Find all haulers that serve "All Areas" or have many states
+      // Find all haulers that serve "All Areas" or have multiple states
       const filtered = brokerList.filter(broker => {
         const isNational = broker.notes?.toLowerCase().includes('all') || 
-                          broker.notes?.toLowerCase().includes('national');
+                          broker.notes?.toLowerCase().includes('national') ||
+                          broker.haulerName.toLowerCase().includes('national');
         
-        // A hauler is considered "wide" if it's national or has more than 10 states (increased from 5)
-        const isWide = isNational || (broker.states && broker.states.length > 10);
+        // A hauler is considered "wide" if it's national or has more than 2 states
+        // or is explicitly a "Region" hauler
+        const isWide = isNational || 
+                       (broker.states && broker.states.length >= 2) ||
+                       broker.haulerName.toLowerCase().includes('region');
         
         // If we have a search state, even "wide" haulers should be checked if they explicitly exclude it
         if (searchState && broker.states && broker.states.length > 0) {

@@ -1949,9 +1949,17 @@ const App: React.FC = () => {
                   <p className="text-[10px] text-gray-600 dark:text-gray-400 font-bold uppercase tracking-widest">{tasks.length} Active Tasks</p>
                 </div>
               </div>
-              <button onClick={() => setIsManagingTasks(false)} className="text-gray-500 p-2 hover:bg-gray-100 rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-gray-400 outline-none" aria-label="Close tasks">
-                <XMarkIcon className="w-7 h-7" aria-hidden="true" />
-              </button>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => { setSelectedHauler(null); setIsCreatingTask(true); }}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase hover:bg-indigo-700 transition shadow-md focus-visible:ring-2 focus-visible:ring-indigo-400 outline-none"
+                >
+                  <PlusIcon className="w-4 h-4" aria-hidden="true" /> New Task
+                </button>
+                <button onClick={() => setIsManagingTasks(false)} className="text-gray-500 p-2 hover:bg-gray-100 rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-gray-400 outline-none" aria-label="Close tasks">
+                  <XMarkIcon className="w-7 h-7" aria-hidden="true" />
+                </button>
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto p-8">
               {tasks.length === 0 ? (
@@ -2013,7 +2021,7 @@ const App: React.FC = () => {
       )}
 
       {/* Create Task Modal */}
-      {isCreatingTask && selectedHauler && (
+      {isCreatingTask && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/80 backdrop-blur-md transition-all" role="dialog" aria-modal="true" aria-labelledby="create-task-title">
           <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-white/20">
             <div className="bg-gray-50 dark:bg-gray-900/50 px-8 py-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
@@ -2025,7 +2033,24 @@ const App: React.FC = () => {
             <form onSubmit={handleCreateTask} className="p-8 space-y-6">
               <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800 mb-2">
                 <p className="text-[10px] font-black uppercase text-indigo-600 mb-1">Related Hauler</p>
-                <p className="text-sm font-bold text-gray-900 dark:text-white">{selectedHauler.name}</p>
+                {selectedHauler ? (
+                  <p className="text-sm font-bold text-gray-900 dark:text-white">{selectedHauler.name}</p>
+                ) : (
+                  <select 
+                    className="w-full bg-transparent border-none text-sm font-bold text-gray-900 dark:text-white focus:ring-0 outline-none cursor-pointer"
+                    onChange={(e) => {
+                      const h = haulers.find(h => h.id === e.target.value);
+                      if (h) setSelectedHauler(h);
+                    }}
+                    value={selectedHauler?.id || ''}
+                    required
+                  >
+                    <option value="" disabled className="text-gray-500">Select a hauler...</option>
+                    {haulers.map(h => (
+                      <option key={h.id} value={h.id} className="text-gray-900">{h.name}</option>
+                    ))}
+                  </select>
+                )}
               </div>
               <div>
                 <label htmlFor="task-title" className="block text-xs font-bold uppercase text-gray-600 dark:text-gray-400 mb-2 tracking-widest">Task Title</label>

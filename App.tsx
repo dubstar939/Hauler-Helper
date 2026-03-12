@@ -820,7 +820,7 @@ const App: React.FC = () => {
   };
 
   const addBrokerToSession = (broker: BrokerContact) => {
-    const existing = haulers.find(h => h.email === broker.brokerEmail && h.contactSource === 'Broker List');
+    const existing = haulers.find(h => h.email.toLowerCase().trim() === broker.brokerEmail.toLowerCase().trim());
     if (existing) return existing;
     const addressToUse = facilityAddress || location || "Facility Address";
     const newHauler: Hauler = {
@@ -903,7 +903,29 @@ const App: React.FC = () => {
         coordinates: coords
       };
     }));
-    setHaulers(prev => [...newHaulers, ...prev].slice(0, 100));
+    
+    setHaulers(prev => {
+      const existingEmails = new Set(prev.map(h => h.email.toLowerCase().trim()));
+      const uniqueNewHaulers: Hauler[] = [];
+      const seenInNew = new Set<string>();
+      
+      for (const h of newHaulers) {
+        const email = h.email.toLowerCase().trim();
+        if (email && !existingEmails.has(email) && !seenInNew.has(email)) {
+          uniqueNewHaulers.push(h);
+          seenInNew.add(email);
+        } else if (!email) {
+          // Fallback to name if email is missing
+          const name = h.name.toLowerCase().trim();
+          const existingNames = new Set(prev.map(p => p.name.toLowerCase().trim()));
+          if (!existingNames.has(name) && !seenInNew.has(name)) {
+            uniqueNewHaulers.push(h);
+            seenInNew.add(name);
+          }
+        }
+      }
+      return [...uniqueNewHaulers, ...prev].slice(0, 100);
+    });
   };
 
   const handleLocalSearch = () => {

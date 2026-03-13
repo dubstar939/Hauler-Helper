@@ -55,8 +55,8 @@ export enum TaskStatus {
 
 export interface Task {
   id: string;
-  haulerId: string;
-  haulerName: string;
+  haulerId?: string;
+  haulerName?: string;
   title: string;
   description?: string;
   dueDate: string;

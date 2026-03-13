@@ -470,12 +470,12 @@ const App: React.FC = () => {
 
   const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedHauler || !newTaskData.title) return;
+    if (!newTaskData.title) return;
 
     const task: Task = {
       id: `task-${Date.now()}`,
-      haulerId: selectedHauler.id,
-      haulerName: selectedHauler.name,
+      haulerId: selectedHauler?.id,
+      haulerName: selectedHauler?.name,
       title: newTaskData.title,
       description: newTaskData.description,
       dueDate: newTaskData.dueDate || new Date().toISOString().split('T')[0],
@@ -491,7 +491,7 @@ const App: React.FC = () => {
       dueDate: new Date().toISOString().split('T')[0],
       status: TaskStatus.PENDING
     });
-    setImportFeedback(`Task created for ${selectedHauler.name}`);
+    setImportFeedback(selectedHauler ? `Task created for ${selectedHauler.name}` : "General task created.");
     setTimeout(() => setImportFeedback(null), 3000);
   };
 
@@ -2082,7 +2082,9 @@ const App: React.FC = () => {
                             {task.status}
                           </span>
                         </div>
-                        <p className="text-xs text-indigo-600 dark:text-indigo-400 font-bold mb-2">Hauler: {task.haulerName}</p>
+                        <p className="text-xs text-indigo-600 dark:text-indigo-400 font-bold mb-2">
+                          {task.haulerName ? `Hauler: ${task.haulerName}` : 'General Task'}
+                        </p>
                         {task.description && <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 line-clamp-2">{task.description}</p>}
                         <div className="flex items-center gap-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
                           <span className="flex items-center gap-1"><ClockIcon className="w-3.5 h-3.5" /> Due: {task.dueDate}</span>
@@ -2137,24 +2139,23 @@ const App: React.FC = () => {
             <form onSubmit={handleCreateTask} className="p-8 space-y-6">
               <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800 mb-2">
                 <p className="text-[10px] font-black uppercase text-indigo-600 mb-1">Related Hauler</p>
-                {selectedHauler ? (
-                  <p className="text-sm font-bold text-gray-900 dark:text-white">{selectedHauler.name}</p>
-                ) : (
-                  <select 
-                    className="w-full bg-transparent border-none text-sm font-bold text-gray-900 dark:text-white focus:ring-0 outline-none cursor-pointer"
-                    onChange={(e) => {
+                <select 
+                  className="w-full bg-transparent border-none text-sm font-bold text-gray-900 dark:text-white focus:ring-0 outline-none cursor-pointer"
+                  onChange={(e) => {
+                    if (e.target.value === 'none') {
+                      setSelectedHauler(null);
+                    } else {
                       const h = haulers.find(h => h.id === e.target.value);
                       if (h) setSelectedHauler(h);
-                    }}
-                    value={selectedHauler?.id || ''}
-                    required
-                  >
-                    <option value="" disabled className="text-gray-500">Select a hauler...</option>
-                    {haulers.map(h => (
-                      <option key={h.id} value={h.id} className="text-gray-900">{h.name}</option>
-                    ))}
-                  </select>
-                )}
+                    }
+                  }}
+                  value={selectedHauler?.id || 'none'}
+                >
+                  <option value="none" className="text-gray-900">General Task (No Hauler)</option>
+                  {haulers.map(h => (
+                    <option key={h.id} value={h.id} className="text-gray-900">{h.name}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label htmlFor="task-title" className="block text-xs font-bold uppercase text-gray-600 dark:text-gray-400 mb-2 tracking-widest">Task Title</label>

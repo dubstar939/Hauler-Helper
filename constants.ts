@@ -8,20 +8,26 @@ www.wasteexperts.com`;
 
 export const BID_TEMPLATE_CURRENT = `Good Morning,
 
-Please see attached form.
+Please provide a bid to retain customer {accountInfo} (details attached).
 
-We are seeking pricing to retain customer {accountInfo}
-
-Please provide your best pricing. The customer is seeking a 36-month service agreement, with no auto-renewal, rate firm first year and CPI cap of 5% on year 2 & 3. 30 day out.
+Requirements:
+- 36-month term
+- No auto-renewal
+- Rate firm Year 1; 5% CPI cap Years 2 & 3
+- 30-day termination notice
 
 Thank you,
 {signature}`;
 
 export const BID_TEMPLATE_NEW = `Hi {haulerName},
 
-Please see attached form.
+Please provide all-in pricing for a new customer at {address} (details attached).
 
-We are seeking pricing for a customer located on {address}. If the area referenced is within your service area, please provide your best (all in) pricing. The customer is seeking a 36-month service agreement, with no auto-renewal, rate firm first year and CPI cap of 5% on year 2 & 3. 30 day out.
+Requirements:
+- 36-month term
+- No auto-renewal
+- Rate firm Year 1; 5% CPI cap Years 2 & 3
+- 30-day termination notice
 
 {signature}`;
 

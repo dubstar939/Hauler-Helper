@@ -130,6 +130,18 @@ const extractState = (loc: string): string | null => {
   return null;
 };
 
+const normalizeHaulerName = (name: string): string => {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .replace(/\s+/g, '')
+    .trim();
+};
+
+const normalizeEmail = (email: string): string => {
+  return email.toLowerCase().trim();
+};
+
 /**
  * Utility to convert HTML from Quill to Plain Text for Outlook mailto: links
  */
@@ -820,7 +832,14 @@ const App: React.FC = () => {
   };
 
   const addBrokerToSession = (broker: BrokerContact) => {
-    const existing = haulers.find(h => h.email.toLowerCase().trim() === broker.brokerEmail.toLowerCase().trim());
+    const normEmail = normalizeEmail(broker.brokerEmail);
+    const normName = normalizeHaulerName(broker.haulerName);
+    
+    const existing = haulers.find(h => 
+      (h.email && normalizeEmail(h.email) === normEmail) || 
+      normalizeHaulerName(h.name) === normName
+    );
+    
     if (existing) return existing;
     const addressToUse = facilityAddress || location || "Facility Address";
     const newHauler: Hauler = {
@@ -883,7 +902,22 @@ const App: React.FC = () => {
   };
 
   const processResults = async (results: SearchResult[], source: 'Search' | 'Broker List') => {
-    const newHaulers: Hauler[] = await Promise.all(results.map(async (res, idx) => {
+    // Pre-filter results to remove duplicates within the incoming set
+    const uniqueIncoming: SearchResult[] = [];
+    const seenIncoming = new Set<string>();
+    
+    for (const res of results) {
+      const normEmail = normalizeEmail(res.email);
+      const normName = normalizeHaulerName(res.name);
+      const key = normEmail || normName;
+      
+      if (!seenIncoming.has(key)) {
+        uniqueIncoming.push(res);
+        seenIncoming.add(key);
+      }
+    }
+
+    const newHaulers: Hauler[] = await Promise.all(uniqueIncoming.map(async (res, idx) => {
       const cleanSearchName = res.name.toLowerCase().replace(/\s+\d{3}-\d{3}-\d{4}/g, '').replace(/\(fka\).*/g, '').trim();
       const isCurrent = currentHaulerName && (cleanSearchName.includes(currentHaulerName.toLowerCase()) || currentHaulerName.toLowerCase().includes(cleanSearchName));
       const addressToUse = facilityAddress || location || "Facility Address";
@@ -905,23 +939,22 @@ const App: React.FC = () => {
     }));
     
     setHaulers(prev => {
-      const existingEmails = new Set(prev.map(h => h.email.toLowerCase().trim()));
+      const existingEmails = new Set(prev.map(h => normalizeEmail(h.email)));
+      const existingNames = new Set(prev.map(h => normalizeHaulerName(h.name)));
       const uniqueNewHaulers: Hauler[] = [];
       const seenInNew = new Set<string>();
       
       for (const h of newHaulers) {
-        const email = h.email.toLowerCase().trim();
-        if (email && !existingEmails.has(email) && !seenInNew.has(email)) {
+        const normEmail = normalizeEmail(h.email);
+        const normName = normalizeHaulerName(h.name);
+        
+        const emailAlreadyExists = normEmail && (existingEmails.has(normEmail) || seenInNew.has(normEmail));
+        const nameAlreadyExists = existingNames.has(normName) || seenInNew.has(normName);
+
+        if (!emailAlreadyExists && !nameAlreadyExists) {
           uniqueNewHaulers.push(h);
-          seenInNew.add(email);
-        } else if (!email) {
-          // Fallback to name if email is missing
-          const name = h.name.toLowerCase().trim();
-          const existingNames = new Set(prev.map(p => p.name.toLowerCase().trim()));
-          if (!existingNames.has(name) && !seenInNew.has(name)) {
-            uniqueNewHaulers.push(h);
-            seenInNew.add(name);
-          }
+          if (normEmail) seenInNew.add(normEmail);
+          seenInNew.add(normName);
         }
       }
       return [...uniqueNewHaulers, ...prev].slice(0, 100);
@@ -969,7 +1002,24 @@ const App: React.FC = () => {
 
         return termMatch || stateMatch;
       });
-      const results: SearchResult[] = filtered.slice(0, 15).map(b => ({ name: b.haulerName, email: b.brokerEmail || '', website: '', snippet: b.notes || 'Local database match.' }));
+      
+      // Deduplicate filtered results before slicing
+      const uniqueFiltered: BrokerContact[] = [];
+      const seenNames = new Set<string>();
+      const seenEmails = new Set<string>();
+      
+      for (const b of filtered) {
+        const normName = normalizeHaulerName(b.haulerName);
+        const normEmail = b.brokerEmail ? normalizeEmail(b.brokerEmail) : '';
+        
+        if (!seenNames.has(normName) && (!normEmail || !seenEmails.has(normEmail))) {
+          uniqueFiltered.push(b);
+          seenNames.add(normName);
+          if (normEmail) seenEmails.add(normEmail);
+        }
+      }
+
+      const results: SearchResult[] = uniqueFiltered.slice(0, 15).map(b => ({ name: b.haulerName, email: b.brokerEmail || '', website: '', snippet: b.notes || 'Local database match.' }));
       processResults(results, 'Broker List');
       setIsSearching(false);
       setSearchStatus('');
@@ -1018,8 +1068,24 @@ const App: React.FC = () => {
 
         return termMatch || stateMatch || stateKeywordMatch;
       });
+      
+      // Deduplicate filtered results before slicing
+      const uniqueFiltered: BrokerContact[] = [];
+      const seenNames = new Set<string>();
+      const seenEmails = new Set<string>();
+      
+      for (const b of filtered) {
+        const normName = normalizeHaulerName(b.haulerName);
+        const normEmail = b.brokerEmail ? normalizeEmail(b.brokerEmail) : '';
+        
+        if (!seenNames.has(normName) && (!normEmail || !seenEmails.has(normEmail))) {
+          uniqueFiltered.push(b);
+          seenNames.add(normName);
+          if (normEmail) seenEmails.add(normEmail);
+        }
+      }
 
-      const results: SearchResult[] = filtered.slice(0, 25).map(b => ({ 
+      const results: SearchResult[] = uniqueFiltered.slice(0, 25).map(b => ({ 
         name: b.haulerName, 
         email: b.brokerEmail || '', 
         website: '', 
@@ -1062,8 +1128,24 @@ const App: React.FC = () => {
 
         return isWide;
       });
+      
+      // Deduplicate filtered results before slicing
+      const uniqueFiltered: BrokerContact[] = [];
+      const seenNames = new Set<string>();
+      const seenEmails = new Set<string>();
+      
+      for (const b of filtered) {
+        const normName = normalizeHaulerName(b.haulerName);
+        const normEmail = b.brokerEmail ? normalizeEmail(b.brokerEmail) : '';
+        
+        if (!seenNames.has(normName) && (!normEmail || !seenEmails.has(normEmail))) {
+          uniqueFiltered.push(b);
+          seenNames.add(normName);
+          if (normEmail) seenEmails.add(normEmail);
+        }
+      }
 
-      const results: SearchResult[] = filtered.slice(0, 20).map(b => ({ 
+      const results: SearchResult[] = uniqueFiltered.slice(0, 20).map(b => ({ 
         name: b.haulerName, 
         email: b.brokerEmail || '', 
         website: '', 

@@ -30,6 +30,7 @@ export interface EmailTemplate {
   category: HaulerType;
   subject: string;
   content: string;
+  attachments: HaulerAttachment[];
 }
 
 export interface SavedSearch {

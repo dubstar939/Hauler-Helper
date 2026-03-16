@@ -88,14 +88,16 @@ const DEFAULT_TEMPLATES: EmailTemplate[] = [
     name: 'Standard Retain Bid',
     category: HaulerType.CURRENT,
     subject: 'Retaining Bid for Client {clientRef} - {haulerName}',
-    content: BID_TEMPLATE_CURRENT
+    content: BID_TEMPLATE_CURRENT,
+    attachments: []
   },
   {
     id: 't-default-new',
     name: 'New Site RFP',
     category: HaulerType.NEW,
     subject: 'New Price Opportunity - Waste & Recycling Services - {address}',
-    content: BID_TEMPLATE_NEW
+    content: BID_TEMPLATE_NEW,
+    attachments: []
   }
 ];
 
@@ -244,6 +246,13 @@ const App: React.FC = () => {
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
   
+  // Multi-selection and Bulk Sending State
+  const [selectedHaulerIds, setSelectedHaulerIds] = useState<Set<string>>(new Set());
+  const [isBulkSending, setIsBulkSending] = useState(false);
+  const [bulkSendProgress, setBulkSendProgress] = useState(0);
+  const [bulkSendStatus, setBulkSendStatus] = useState<'idle' | 'sending' | 'completed'>('idle');
+  const [bulkSendResults, setBulkSendResults] = useState<{id: string, name: string, status: 'success' | 'error'}[]>([]);
+
   // Database Editing State
   const [editingBrokerIndex, setEditingBrokerIndex] = useState<number | null>(null);
   const [editEmailValue, setEditEmailValue] = useState('');
@@ -262,6 +271,55 @@ const App: React.FC = () => {
     }
     return false;
   });
+
+  const toggleHaulerSelection = (id: string) => {
+    setSelectedHaulerIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleAllHaulers = () => {
+    if (selectedHaulerIds.size === sortedHaulers.length && sortedHaulers.length > 0) {
+      setSelectedHaulerIds(new Set());
+    } else {
+      setSelectedHaulerIds(new Set(sortedHaulers.map(h => h.id)));
+    }
+  };
+
+  const handleBulkSend = async () => {
+    if (selectedHaulerIds.size === 0) return;
+    
+    setIsBulkSending(true);
+    setBulkSendStatus('sending');
+    setBulkSendProgress(0);
+    setBulkSendResults([]);
+
+    const selectedHaulersList = haulers.filter(h => selectedHaulerIds.has(h.id));
+    const total = selectedHaulersList.length;
+
+    for (let i = 0; i < total; i++) {
+      const hauler = selectedHaulersList[i];
+      // Simulate sending delay
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      setBulkSendResults(prev => [...prev, { id: hauler.id, name: hauler.name, status: 'success' }]);
+      setBulkSendProgress(Math.round(((i + 1) / total) * 100));
+      
+      // Update hauler status in state
+      setHaulers(prev => prev.map(h => h.id === hauler.id ? { ...h, status: HaulerStatus.SENT, lastActionDate: new Date().toISOString().split('T')[0] } : h));
+    }
+
+    setBulkSendStatus('completed');
+    setImportFeedback(`Successfully sent emails to ${total} partners.`);
+    setTimeout(() => setImportFeedback(null), 3000);
+  };
+
   const [searchRadius, setSearchRadius] = useState<number | ''>('');
   const [globalAttachments] = useState<HaulerAttachment[]>([
     { name: 'Standard_Bid_Template.pdf', size: 245000, type: 'application/pdf' }
@@ -673,6 +731,19 @@ const App: React.FC = () => {
 
     updateHaulerField(selectedHauler.id, 'draftSubject', newSubject);
     updateHaulerField(selectedHauler.id, 'draftContent', htmlContent);
+    
+    // Copy template attachments to hauler attachments
+    if (template.attachments && template.attachments.length > 0) {
+      const existing = selectedHauler.attachments || [];
+      const merged = [...existing];
+      template.attachments.forEach(ta => {
+        if (!merged.some(ma => ma.name === ta.name)) {
+          merged.push(ta);
+        }
+      });
+      updateHaulerField(selectedHauler.id, 'attachments', merged);
+    }
+
     setImportFeedback(`Applied template: ${template.name}`);
     setTimeout(() => setImportFeedback(null), 3000);
   };
@@ -697,14 +768,15 @@ const App: React.FC = () => {
 
   const handleSaveTemplate = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingTemplate) return;
+    if (!editingTemplate || !editingTemplate.name.trim()) return;
+    
     if (templates.find(t => t.id === editingTemplate.id)) {
       setTemplates(prev => prev.map(t => t.id === editingTemplate.id ? editingTemplate : t));
     } else {
-      setTemplates(prev => [...prev, editingTemplate]);
+      setTemplates(prev => [editingTemplate, ...prev]);
     }
     setEditingTemplate(null);
-    setImportFeedback("Template saved.");
+    setImportFeedback(`Template "${editingTemplate.name}" saved.`);
     setTimeout(() => setImportFeedback(null), 3000);
   };
 
@@ -1539,6 +1611,12 @@ const App: React.FC = () => {
                 <div className="space-y-2">
                   <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-2 text-[10px] font-black uppercase tracking-widest text-gray-400">
                     <div className="col-span-6 flex items-center gap-4">
+                      <input 
+                        type="checkbox" 
+                        className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        checked={selectedHaulerIds.size === sortedHaulers.length && sortedHaulers.length > 0}
+                        onChange={toggleAllHaulers}
+                      />
                       <button onClick={() => handleSort('name')} className={`flex items-center gap-1 hover:text-gray-600 transition-colors ${sortConfig.key === 'name' ? 'text-green-600' : ''}`}>
                         Hauler Name {sortConfig.key === 'name' && (sortConfig.direction === 'asc' ? <ChevronUpIcon className="w-3 h-3" /> : <ChevronDownIcon className="w-3 h-3" />)}
                       </button>
@@ -1562,9 +1640,16 @@ const App: React.FC = () => {
                     {sortedHaulers.map((h) => {
                     const inDb = isHaulerInDb(h.email);
                     return (
-                      <li key={h.id} className="bg-white dark:bg-gray-800 rounded-2xl border p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm border-gray-100 dark:border-gray-700 hover:border-green-300/50 hover:shadow-md transition-all group">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3 mb-2">
+                      <li key={h.id} className={`bg-white dark:bg-gray-800 rounded-2xl border p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm transition-all group ${selectedHaulerIds.has(h.id) ? 'border-indigo-400 bg-indigo-50/30 dark:bg-indigo-900/10' : 'border-gray-100 dark:border-gray-700 hover:border-green-300/50 hover:shadow-md'}`}>
+                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                          <input 
+                            type="checkbox" 
+                            className="w-5 h-5 rounded-lg border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-all"
+                            checked={selectedHaulerIds.has(h.id)}
+                            onChange={() => toggleHaulerSelection(h.id)}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-3 mb-2">
                             <h3 className="text-lg font-black truncate tracking-tight">{h.name}</h3>
                             <div className="flex gap-2">
                               <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.contactSource === 'Broker List' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'}`}>
@@ -1598,7 +1683,8 @@ const App: React.FC = () => {
                               )}
                             </div>
                           </div>
-                          <div className="flex flex-wrap items-center gap-5 text-sm text-gray-600 dark:text-gray-400">
+                        </div>
+                        <div className="flex flex-wrap items-center gap-5 text-sm text-gray-600 dark:text-gray-400">
                             <div className="flex items-center gap-2">
                               <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-800">
                                 <EnvelopeIcon className="w-4 h-4 text-gray-500" aria-hidden="true" /> 
@@ -1670,6 +1756,38 @@ const App: React.FC = () => {
                 </ul>
               </div>
               )
+            )}
+
+            {/* Bulk Action Bar */}
+            {selectedHaulerIds.size > 0 && (
+              <div className="sticky bottom-8 left-0 right-0 z-40 px-4 animate-in slide-in-from-bottom-4 duration-300">
+                <div className="max-w-4xl mx-auto bg-indigo-600 dark:bg-indigo-500 text-white p-4 rounded-2xl shadow-2xl flex items-center justify-between gap-4 border border-white/20 backdrop-blur-lg">
+                  <div className="flex items-center gap-4">
+                    <div className="bg-white/20 p-2 rounded-xl">
+                      <UserGroupIcon className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-black uppercase tracking-widest">{selectedHaulerIds.size} Partners Selected</p>
+                      <p className="text-[10px] font-bold opacity-80">Ready for bulk follow-up</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => setSelectedHaulerIds(new Set())}
+                      className="px-4 py-2 text-xs font-black uppercase tracking-widest hover:bg-white/10 rounded-xl transition-colors"
+                    >
+                      Deselect All
+                    </button>
+                    <button 
+                      onClick={handleBulkSend}
+                      className="px-6 py-2 bg-white text-indigo-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-50 transition-all shadow-lg flex items-center gap-2"
+                    >
+                      <PaperAirplaneIcon className="w-4 h-4" />
+                      Send Bulk Email
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Intelligence Sources Section Removed */}
@@ -1761,11 +1879,57 @@ const App: React.FC = () => {
                       id="temp-body" 
                       value={editingTemplate.content} 
                       onChange={e => setEditingTemplate({...editingTemplate, content: e.target.value})} 
-                      className="w-full h-80 px-5 py-4 rounded-xl border-2 border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm leading-relaxed outline-none focus:border-amber-500 font-medium" 
+                      className="w-full h-64 px-5 py-4 rounded-xl border-2 border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm leading-relaxed outline-none focus:border-amber-500 font-medium" 
                       placeholder="Write your template here..." 
                       required 
                     />
                   </div>
+
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold uppercase text-gray-600 dark:text-gray-400 tracking-widest">Template Attachments</label>
+                      <button 
+                        type="button"
+                        onClick={() => attachmentInputRef.current?.click()}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-lg text-[10px] font-black uppercase tracking-widest border border-amber-100 dark:border-amber-800 hover:bg-amber-100 transition-all"
+                      >
+                        <PaperClipIcon className="w-3.5 h-3.5" /> Add Files
+                      </button>
+                      <input 
+                        type="file" 
+                        ref={attachmentInputRef} 
+                        className="hidden" 
+                        multiple 
+                        onChange={(e) => {
+                          const files = Array.from(e.target.files || []);
+                          const newAttachments: HaulerAttachment[] = files.map((f: File) => ({ name: f.name, size: f.size, type: f.type }));
+                          setEditingTemplate(prev => prev ? { ...prev, attachments: [...(prev.attachments || []), ...newAttachments] } : null);
+                        }}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {editingTemplate.attachments?.map((file: HaulerAttachment, i: number) => (
+                        <div key={i} className="group relative flex items-center gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl text-xs font-bold shadow-sm transition-all hover:border-amber-400 pr-10">
+                          <div className="p-2 bg-amber-100 dark:bg-amber-900/40 rounded-lg"><DocumentIcon className="w-4 h-4 text-amber-600 dark:text-amber-400" aria-hidden="true" /></div>
+                          <div className="flex flex-col min-w-0">
+                            <span className="truncate max-w-[150px] text-gray-900 dark:text-white leading-tight">{file.name}</span>
+                            <span className="text-[9px] text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider">{formatFileSize(file.size)}</span>
+                          </div>
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              setEditingTemplate(prev => prev ? { ...prev, attachments: prev.attachments.filter((_, idx) => idx !== i) } : null);
+                            }}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all focus-visible:opacity-100 outline-none"
+                            aria-label={`Remove ${file.name}`}
+                          >
+                            <XMarkIcon className="w-4 h-4" aria-hidden="true" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="flex justify-end gap-4 pt-4">
                     <button type="button" onClick={() => setEditingTemplate(null)} className="px-8 py-3 font-bold text-gray-500 hover:text-gray-700 transition-colors focus-visible:underline outline-none">Cancel</button>
                     <button type="submit" className="px-10 py-3 bg-amber-600 text-white rounded-2xl text-sm font-black hover:bg-amber-700 shadow-xl focus-visible:ring-2 focus-visible:ring-amber-400 outline-none">SAVE CHANGES</button>
@@ -2036,6 +2200,75 @@ const App: React.FC = () => {
                   <PaperAirplaneIcon className="w-6 h-6 -rotate-45 group-hover:translate-x-2 group-hover:-translate-y-1 transition-transform" aria-hidden="true" /> PROCESS IN OUTLOOK
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Send Progress Modal */}
+      {isBulkSending && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-gray-900/90 backdrop-blur-xl transition-all" role="dialog" aria-modal="true">
+          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-white/20">
+            <div className="p-10 text-center">
+              {bulkSendStatus === 'sending' ? (
+                <>
+                  <div className="relative w-24 h-24 mx-auto mb-8">
+                    <div className="absolute inset-0 border-4 border-indigo-100 dark:border-indigo-900 rounded-full"></div>
+                    <div 
+                      className="absolute inset-0 border-4 border-indigo-600 rounded-full transition-all duration-500"
+                      style={{ 
+                        clipPath: `polygon(50% 50%, -50% -50%, ${bulkSendProgress > 25 ? '150% -50%' : '50% -50%'}, ${bulkSendProgress > 50 ? '150% 150%' : '50% -50%'}, ${bulkSendProgress > 75 ? '-50% 150%' : '50% -50%'}, -50% -50%)`,
+                        transform: 'rotate(45deg)'
+                      }}
+                    ></div>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <PaperAirplaneIcon className="w-10 h-10 text-indigo-600 animate-pulse" />
+                    </div>
+                  </div>
+                  <h3 className="text-2xl font-black tracking-tight mb-2">Sending Bulk Emails</h3>
+                  <p className="text-gray-500 dark:text-gray-400 font-bold uppercase text-[10px] tracking-[0.2em] mb-8">
+                    Processing {bulkSendResults.length} of {selectedHaulerIds.size} partners
+                  </p>
+                  
+                  <div className="w-full bg-gray-100 dark:bg-gray-700 h-3 rounded-full overflow-hidden mb-8">
+                    <div 
+                      className="bg-indigo-600 h-full transition-all duration-500 shadow-[0_0_15px_rgba(79,70,229,0.5)]"
+                      style={{ width: `${bulkSendProgress}%` }}
+                    ></div>
+                  </div>
+
+                  <div className="max-h-48 overflow-y-auto space-y-2 text-left bg-gray-50 dark:bg-gray-900/50 p-4 rounded-2xl border border-gray-100 dark:border-gray-800">
+                    {bulkSendResults.map((res, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs font-bold animate-in fade-in slide-in-from-left-2 duration-300">
+                        <span className="text-gray-700 dark:text-gray-300">{res.name}</span>
+                        <span className="text-green-600 flex items-center gap-1">
+                          <CheckCircleIcon className="w-4 h-4" /> Sent
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="w-24 h-24 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-full flex items-center justify-center mx-auto mb-8 shadow-xl">
+                    <CheckBadgeIcon className="w-12 h-12" />
+                  </div>
+                  <h3 className="text-3xl font-black tracking-tight mb-2">Bulk Send Complete</h3>
+                  <p className="text-gray-500 dark:text-gray-400 font-bold uppercase text-[10px] tracking-[0.2em] mb-10">
+                    {selectedHaulerIds.size} Emails successfully processed
+                  </p>
+                  
+                  <button 
+                    onClick={() => {
+                      setIsBulkSending(false);
+                      setSelectedHaulerIds(new Set());
+                    }}
+                    className="w-full py-5 bg-indigo-600 text-white rounded-2xl text-base font-black uppercase tracking-widest hover:bg-indigo-700 shadow-2xl transition-all"
+                  >
+                    Return to Dashboard
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

@@ -1,5 +1,6 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { supabase } from './src/supabase';
 import { 
   MagnifyingGlassIcon, 
   ArrowPathIcon, 
@@ -409,6 +410,73 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem(TASK_STORAGE_KEY, JSON.stringify(tasks));
   }, [tasks]);
+
+  // Supabase Persistence Logic
+  const syncToSupabase = async () => {
+    if (!(import.meta as any).env.VITE_SUPABASE_URL || !(import.meta as any).env.VITE_SUPABASE_ANON_KEY) return;
+
+    try {
+      // For now, we'll use a single 'app_data' table to store everything as a blob 
+      // since we don't have a full auth system yet. This ensures the user's data is saved.
+      const { error } = await supabase
+        .from('app_data')
+        .upsert({ 
+          id: 'global_state', 
+          data: {
+            brokerList,
+            templates,
+            savedSearches,
+            tasks
+          },
+          updated_at: new Date().toISOString()
+        });
+      
+      if (error) throw error;
+      console.log('Synced to Supabase successfully');
+    } catch (e) {
+      console.error('Supabase Sync Error:', e);
+    }
+  };
+
+  // Auto-sync on changes (debounced or just on state change for now)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      syncToSupabase();
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [brokerList, templates, savedSearches, tasks]);
+
+  // Initial load from Supabase
+  useEffect(() => {
+    const loadFromSupabase = async () => {
+      if (!(import.meta as any).env.VITE_SUPABASE_URL || !(import.meta as any).env.VITE_SUPABASE_ANON_KEY) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('app_data')
+          .select('data')
+          .eq('id', 'global_state')
+          .single();
+
+        if (error && error.code !== 'PGRST116') throw error; // PGRST116 is "no rows returned"
+
+        if (data?.data) {
+          const remote = data.data;
+          // Only update if remote has data
+          if (remote.brokerList) setBrokerList(remote.brokerList);
+          if (remote.templates) setTemplates(remote.templates);
+          if (remote.savedSearches) setSavedSearches(remote.savedSearches);
+          if (remote.tasks) setTasks(remote.tasks);
+          setImportFeedback('Data synced from Supabase');
+          setTimeout(() => setImportFeedback(null), 3000);
+        }
+      } catch (e) {
+        console.error('Supabase Load Error:', e);
+      }
+    };
+
+    loadFromSupabase();
+  }, []);
 
   useEffect(() => {
     if (isDarkMode) {
@@ -1808,7 +1876,7 @@ const App: React.FC = () => {
                 <h3 id="templates-title" className="text-2xl font-black tracking-tight">Email Templates</h3>
               </div>
               <div className="flex items-center gap-3">
-                <button onClick={() => setEditingTemplate({ id: `t-${Date.now()}`, name: '', category: HaulerType.NEW, subject: '', content: '' })} className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-black uppercase hover:bg-amber-700 transition shadow-md focus-visible:ring-2 focus-visible:ring-amber-400 outline-none">
+                <button onClick={() => setEditingTemplate({ id: `t-${Date.now()}`, name: '', category: HaulerType.NEW, subject: '', content: '', attachments: [] })} className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-black uppercase hover:bg-amber-700 transition shadow-md focus-visible:ring-2 focus-visible:ring-amber-400 outline-none">
                   <PlusIcon className="w-4 h-4" aria-hidden="true" /> New Template
                 </button>
                 <button onClick={() => setIsManagingTemplates(false)} className="text-gray-500 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-gray-400 outline-none" aria-label="Close templates">

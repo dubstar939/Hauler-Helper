@@ -39,6 +39,7 @@ import {
   UserGroupIcon,
   NoSymbolIcon,
   PaperAirplaneIcon,
+  XCircleIcon,
   DocumentDuplicateIcon,
   DocumentTextIcon,
   DocumentIcon,
@@ -245,7 +246,18 @@ const App: React.FC = () => {
   const [isManagingTemplates, setIsManagingTemplates] = useState(false);
   const [upcomingTasks, setUpcomingTasks] = useState<Task[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [placeholderList, setPlaceholderList] = useState([...PLACEHOLDERS]);
+
+  const movePlaceholder = (index: number, direction: 'up' | 'down') => {
+    const newList = [...placeholderList];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= newList.length) return;
+    [newList[index], newList[targetIndex]] = [newList[targetIndex], newList[index]];
+    setPlaceholderList(newList);
+  };
+
   const [isManagingTasks, setIsManagingTasks] = useState(false);
+  const [taskFilter, setTaskFilter] = useState<'ALL' | 'PENDING' | 'COMPLETED' | 'OVERDUE'>('ALL');
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
   
@@ -311,11 +323,20 @@ const App: React.FC = () => {
       // Simulate sending delay
       await new Promise(resolve => setTimeout(resolve, 800));
       
-      setBulkSendResults(prev => [...prev, { id: hauler.id, name: hauler.name, status: 'success' }]);
+      // Randomly fail 5% of the time for realism
+      const isSuccess = Math.random() > 0.05;
+      
+      setBulkSendResults(prev => [...prev, { 
+        id: hauler.id, 
+        name: hauler.name, 
+        status: isSuccess ? 'success' : 'error' 
+      }]);
       setBulkSendProgress(Math.round(((i + 1) / total) * 100));
       
-      // Update hauler status in state
-      setHaulers(prev => prev.map(h => h.id === hauler.id ? { ...h, status: HaulerStatus.SENT, lastActionDate: new Date().toISOString().split('T')[0] } : h));
+      if (isSuccess) {
+        // Update hauler status in state
+        setHaulers(prev => prev.map(h => h.id === hauler.id ? { ...h, status: HaulerStatus.SENT, lastActionDate: new Date().toISOString().split('T')[0] } : h));
+      }
     }
 
     setBulkSendStatus('completed');
@@ -419,7 +440,9 @@ const App: React.FC = () => {
       const dueDate = new Date(t.dueDate);
       const diffTime = dueDate.getTime() - now.getTime();
       const diffHours = diffTime / (1000 * 60 * 60);
-      return diffHours > 0 && diffHours <= 48;
+      // Also check if overdue
+      const isOverdue = diffTime < 0 && t.status === TaskStatus.PENDING;
+      return (diffHours > 0 && diffHours <= 48) || isOverdue;
     });
     setUpcomingTasks(upcoming);
   }, [tasks]);
@@ -1952,23 +1975,42 @@ const App: React.FC = () => {
                     <div className="flex items-center gap-2 mb-3 text-[10px] font-black uppercase tracking-widest text-amber-600">
                       <KeyIcon className="w-4 h-4" /> Available Placeholders (Click to Insert)
                     </div>
-                    <div className="flex wrap gap-2">
-                      {PLACEHOLDERS.map((p) => (
-                        <button
-                          key={p.key}
-                          type="button"
-                          onClick={() => {
-                            const lastFocus = document.activeElement;
-                            if (lastFocus === templateSubjectRef.current) {
-                              insertPlaceholder(p.key, 'subject');
-                            } else {
-                              insertPlaceholder(p.key, 'content');
-                            }
-                          }}
-                          className="px-3 py-1.5 bg-white dark:bg-gray-800 border border-amber-200 dark:border-amber-700 rounded-lg text-xs font-bold text-amber-700 dark:text-amber-400 hover:border-amber-400 hover:shadow-sm transition-all"
-                        >
-                          {p.label} <code className="ml-1 opacity-60 font-mono">{p.key}</code>
-                        </button>
+                    <div className="flex flex-wrap gap-2">
+                      {placeholderList.map((p, idx) => (
+                        <div key={p.key} className="group relative flex items-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const lastFocus = document.activeElement;
+                              if (lastFocus === templateSubjectRef.current) {
+                                insertPlaceholder(p.key, 'subject');
+                              } else {
+                                insertPlaceholder(p.key, 'content');
+                              }
+                            }}
+                            className="px-3 py-1.5 bg-white dark:bg-gray-800 border border-amber-200 dark:border-amber-700 rounded-lg text-xs font-bold text-amber-700 dark:text-amber-400 hover:border-amber-400 hover:shadow-sm transition-all pr-12"
+                          >
+                            {p.label} <code className="ml-1 opacity-60 font-mono">{p.key}</code>
+                          </button>
+                          <div className="absolute right-1 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button 
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); movePlaceholder(idx, 'up'); }}
+                              disabled={idx === 0}
+                              className="p-0.5 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded text-amber-600 disabled:opacity-20"
+                            >
+                              <ChevronUpIcon className="w-3 h-3" />
+                            </button>
+                            <button 
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); movePlaceholder(idx, 'down'); }}
+                              disabled={idx === placeholderList.length - 1}
+                              className="p-0.5 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded text-amber-600 disabled:opacity-20"
+                            >
+                              <ChevronDownIcon className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -2354,23 +2396,53 @@ const App: React.FC = () => {
                   <div className="max-h-48 overflow-y-auto space-y-2 text-left bg-gray-50 dark:bg-gray-900/50 p-4 rounded-2xl border border-gray-100 dark:border-gray-800">
                     {bulkSendResults.map((res, i) => (
                       <div key={i} className="flex items-center justify-between text-xs font-bold animate-in fade-in slide-in-from-left-2 duration-300">
-                        <span className="text-gray-700 dark:text-gray-300">{res.name}</span>
-                        <span className="text-green-600 flex items-center gap-1">
-                          <CheckCircleIcon className="w-4 h-4" /> Sent
-                        </span>
+                        <span className="text-gray-700 dark:text-gray-300 truncate mr-4">{res.name}</span>
+                        {res.status === 'success' ? (
+                          <span className="text-green-600 flex items-center gap-1 shrink-0">
+                            <CheckCircleIcon className="w-4 h-4" /> Sent
+                          </span>
+                        ) : (
+                          <span className="text-red-600 flex items-center gap-1 shrink-0">
+                            <XCircleIcon className="w-4 h-4" /> Failed
+                          </span>
+                        )}
                       </div>
                     ))}
                   </div>
                 </>
               ) : (
                 <>
-                  <div className="w-24 h-24 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-full flex items-center justify-center mx-auto mb-8 shadow-xl">
+                  <div className="w-24 h-24 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-8 shadow-xl">
                     <CheckBadgeIcon className="w-12 h-12" />
                   </div>
                   <h3 className="text-3xl font-black tracking-tight mb-2">Bulk Send Complete</h3>
-                  <p className="text-gray-500 dark:text-gray-400 font-bold uppercase text-[10px] tracking-[0.2em] mb-10">
-                    {selectedHaulerIds.size} Emails successfully processed
-                  </p>
+                  <div className="flex justify-center gap-8 mb-8">
+                    <div className="text-center">
+                      <p className="text-2xl font-black text-green-600">{bulkSendResults.filter(r => r.status === 'success').length}</p>
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-gray-500">Successful</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-black text-red-600">{bulkSendResults.filter(r => r.status === 'error').length}</p>
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-gray-500">Failed</p>
+                    </div>
+                  </div>
+
+                  <div className="max-h-48 overflow-y-auto space-y-2 text-left bg-gray-50 dark:bg-gray-900/50 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 mb-8">
+                    {bulkSendResults.map((res, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs font-bold">
+                        <span className="text-gray-700 dark:text-gray-300 truncate mr-4">{res.name}</span>
+                        {res.status === 'success' ? (
+                          <span className="text-green-600 flex items-center gap-1 shrink-0">
+                            <CheckCircleIcon className="w-4 h-4" /> Success
+                          </span>
+                        ) : (
+                          <span className="text-red-600 flex items-center gap-1 shrink-0">
+                            <XCircleIcon className="w-4 h-4" /> Failed
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                   
                   <button 
                     onClick={() => {
@@ -2392,80 +2464,124 @@ const App: React.FC = () => {
       {isManagingTasks && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/80 backdrop-blur-md transition-all" role="dialog" aria-modal="true" aria-labelledby="tasks-title">
           <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl w-full max-w-4xl h-[85vh] overflow-hidden border border-white/20 flex flex-col">
-            <div className="bg-gray-50 dark:bg-gray-900/50 px-8 py-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
-              <div className="flex items-center gap-4">
-                <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg"><CheckBadgeIcon className="w-7 h-7" aria-hidden="true" /></div>
-                <div>
-                  <h3 id="tasks-title" className="text-2xl font-black tracking-tight">Follow-up Tasks</h3>
-                  <p className="text-[10px] text-gray-600 dark:text-gray-400 font-bold uppercase tracking-widest">{tasks.length} Active Tasks</p>
+            <div className="bg-gray-50 dark:bg-gray-900/50 px-8 py-6 border-b border-gray-100 dark:border-gray-700 flex flex-col gap-4">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                  <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg"><CheckBadgeIcon className="w-7 h-7" aria-hidden="true" /></div>
+                  <div>
+                    <h3 id="tasks-title" className="text-2xl font-black tracking-tight">Follow-up Tasks</h3>
+                    <p className="text-[10px] text-gray-600 dark:text-gray-400 font-bold uppercase tracking-widest">{tasks.length} Total Tasks</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => { setSelectedHauler(null); setIsCreatingTask(true); }}
+                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase hover:bg-indigo-700 transition shadow-md focus-visible:ring-2 focus-visible:ring-indigo-400 outline-none"
+                  >
+                    <PlusIcon className="w-4 h-4" aria-hidden="true" /> New Task
+                  </button>
+                  <button onClick={() => setIsManagingTasks(false)} className="text-gray-500 p-2 hover:bg-gray-100 rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-gray-400 outline-none" aria-label="Close tasks">
+                    <XMarkIcon className="w-7 h-7" aria-hidden="true" />
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={() => { setSelectedHauler(null); setIsCreatingTask(true); }}
-                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase hover:bg-indigo-700 transition shadow-md focus-visible:ring-2 focus-visible:ring-indigo-400 outline-none"
-                >
-                  <PlusIcon className="w-4 h-4" aria-hidden="true" /> New Task
-                </button>
-                <button onClick={() => setIsManagingTasks(false)} className="text-gray-500 p-2 hover:bg-gray-100 rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-gray-400 outline-none" aria-label="Close tasks">
-                  <XMarkIcon className="w-7 h-7" aria-hidden="true" />
-                </button>
+              <div className="flex items-center gap-2">
+                {(['ALL', 'PENDING', 'COMPLETED', 'OVERDUE'] as const).map((f) => {
+                  const isActive = taskFilter === f;
+                  const count = tasks.filter(t => {
+                    if (f === 'ALL') return true;
+                    if (f === 'PENDING') return t.status === TaskStatus.PENDING;
+                    if (f === 'COMPLETED') return t.status === TaskStatus.COMPLETED;
+                    if (f === 'OVERDUE') return t.status === TaskStatus.PENDING && new Date(t.dueDate) < new Date();
+                    return true;
+                  }).length;
+                  return (
+                    <button
+                      key={f}
+                      onClick={() => setTaskFilter(f)}
+                      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border ${
+                        isActive 
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' 
+                          : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      {f} ({count})
+                    </button>
+                  );
+                })}
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-8">
-              {tasks.length === 0 ? (
+              {tasks.filter(t => {
+                if (taskFilter === 'ALL') return true;
+                if (taskFilter === 'PENDING') return t.status === TaskStatus.PENDING;
+                if (taskFilter === 'COMPLETED') return t.status === TaskStatus.COMPLETED;
+                if (taskFilter === 'OVERDUE') return t.status === TaskStatus.PENDING && new Date(t.dueDate) < new Date();
+                return true;
+              }).length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-gray-400">
                   <CheckCircleIcon className="w-16 h-16 mb-4 opacity-20" />
-                  <p className="text-sm font-bold uppercase tracking-widest">No follow-up tasks scheduled</p>
+                  <p className="text-sm font-bold uppercase tracking-widest">No tasks found for this filter</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-4">
-                  {tasks.map(task => (
-                    <div key={task.id} className={`p-6 rounded-2xl border transition-all flex items-center justify-between gap-6 ${task.status === TaskStatus.COMPLETED ? 'bg-gray-50 dark:bg-gray-900/30 border-gray-100 dark:border-gray-800 opacity-60' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 hover:border-indigo-400 shadow-sm'}`}>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-1">
-                          <h4 className={`text-base font-black tracking-tight truncate ${task.status === TaskStatus.COMPLETED ? 'line-through' : ''}`}>{task.title}</h4>
-                          <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider ${task.status === TaskStatus.PENDING ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
-                            {task.status}
-                          </span>
+                  {tasks
+                    .filter(t => {
+                      if (taskFilter === 'ALL') return true;
+                      if (taskFilter === 'PENDING') return t.status === TaskStatus.PENDING;
+                      if (taskFilter === 'COMPLETED') return t.status === TaskStatus.COMPLETED;
+                      if (taskFilter === 'OVERDUE') return t.status === TaskStatus.PENDING && new Date(t.dueDate) < new Date();
+                      return true;
+                    })
+                    .map(task => {
+                      const isOverdue = task.status === TaskStatus.PENDING && new Date(task.dueDate) < new Date();
+                      return (
+                        <div key={task.id} className={`p-6 rounded-2xl border transition-all flex items-center justify-between gap-6 ${task.status === TaskStatus.COMPLETED ? 'bg-gray-50 dark:bg-gray-900/30 border-gray-100 dark:border-gray-800 opacity-60' : isOverdue ? 'bg-red-50/30 dark:bg-red-900/10 border-red-100 dark:border-red-900/30' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 hover:border-indigo-400 shadow-sm'}`}>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-3 mb-1">
+                              <h4 className={`text-base font-black tracking-tight truncate ${task.status === TaskStatus.COMPLETED ? 'line-through' : ''}`}>{task.title}</h4>
+                              <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider ${task.status === TaskStatus.PENDING ? (isOverdue ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700') : 'bg-green-100 text-green-700'}`}>
+                                {isOverdue ? 'OVERDUE' : task.status}
+                              </span>
+                            </div>
+                            <p className="text-xs text-indigo-600 dark:text-indigo-400 font-bold mb-2">
+                              {task.haulerName ? `Hauler: ${task.haulerName}` : 'General Task'}
+                            </p>
+                            {task.description && <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 line-clamp-2">{task.description}</p>}
+                            <div className="flex items-center gap-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                              <span className={`flex items-center gap-1 ${isOverdue ? 'text-red-500' : ''}`}><ClockIcon className="w-3.5 h-3.5" /> Due: {task.dueDate}</span>
+                              <span className="flex items-center gap-1"><PlusIcon className="w-3.5 h-3.5" /> Created: {new Date(task.createdAt).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {task.status === TaskStatus.PENDING ? (
+                              <button 
+                                onClick={() => handleUpdateTaskStatus(task.id, TaskStatus.COMPLETED)}
+                                className="p-3 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-xl hover:bg-green-100 transition focus-visible:ring-2 focus-visible:ring-green-400 outline-none"
+                                title="Mark as Completed"
+                              >
+                                <CheckIcon className="w-5 h-5" />
+                              </button>
+                            ) : (
+                              <button 
+                                onClick={() => handleUpdateTaskStatus(task.id, TaskStatus.PENDING)}
+                                className="p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-xl hover:bg-amber-100 transition focus-visible:ring-2 focus-visible:ring-amber-400 outline-none"
+                                title="Mark as Pending"
+                              >
+                                <ArrowUturnLeftIcon className="w-5 h-5" />
+                              </button>
+                            )}
+                            <button 
+                              onClick={() => handleDeleteTask(task.id)}
+                              className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-100 transition focus-visible:ring-2 focus-visible:ring-red-400 outline-none"
+                              title="Delete Task"
+                            >
+                              <TrashIcon className="w-5 h-5" />
+                            </button>
+                          </div>
                         </div>
-                        <p className="text-xs text-indigo-600 dark:text-indigo-400 font-bold mb-2">
-                          {task.haulerName ? `Hauler: ${task.haulerName}` : 'General Task'}
-                        </p>
-                        {task.description && <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 line-clamp-2">{task.description}</p>}
-                        <div className="flex items-center gap-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                          <span className="flex items-center gap-1"><ClockIcon className="w-3.5 h-3.5" /> Due: {task.dueDate}</span>
-                          <span className="flex items-center gap-1"><PlusIcon className="w-3.5 h-3.5" /> Created: {new Date(task.createdAt).toLocaleDateString()}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {task.status === TaskStatus.PENDING ? (
-                          <button 
-                            onClick={() => handleUpdateTaskStatus(task.id, TaskStatus.COMPLETED)}
-                            className="p-3 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-xl hover:bg-green-100 transition focus-visible:ring-2 focus-visible:ring-green-400 outline-none"
-                            title="Mark as Completed"
-                          >
-                            <CheckIcon className="w-5 h-5" />
-                          </button>
-                        ) : (
-                          <button 
-                            onClick={() => handleUpdateTaskStatus(task.id, TaskStatus.PENDING)}
-                            className="p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-xl hover:bg-amber-100 transition focus-visible:ring-2 focus-visible:ring-amber-400 outline-none"
-                            title="Mark as Pending"
-                          >
-                            <ArrowUturnLeftIcon className="w-5 h-5" />
-                          </button>
-                        )}
-                        <button 
-                          onClick={() => handleDeleteTask(task.id)}
-                          className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-100 transition focus-visible:ring-2 focus-visible:ring-red-400 outline-none"
-                          title="Delete Task"
-                        >
-                          <TrashIcon className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                      );
+                    })}
                 </div>
               )}
             </div>

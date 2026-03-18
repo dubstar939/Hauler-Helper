@@ -243,6 +243,8 @@ const App: React.FC = () => {
   const [isDrafting, setIsDrafting] = useState(false);
   const [isManagingDb, setIsManagingDb] = useState(false);
   const [isManagingTemplates, setIsManagingTemplates] = useState(false);
+  const [upcomingTasks, setUpcomingTasks] = useState<Task[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [isManagingTasks, setIsManagingTasks] = useState(false);
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
@@ -409,6 +411,17 @@ const App: React.FC = () => {
 
   useEffect(() => {
     localStorage.setItem(TASK_STORAGE_KEY, JSON.stringify(tasks));
+    
+    // Check for upcoming tasks (within 48 hours)
+    const now = new Date();
+    const upcoming = tasks.filter(t => {
+      if (t.status === TaskStatus.COMPLETED) return false;
+      const dueDate = new Date(t.dueDate);
+      const diffTime = dueDate.getTime() - now.getTime();
+      const diffHours = diffTime / (1000 * 60 * 60);
+      return diffHours > 0 && diffHours <= 48;
+    });
+    setUpcomingTasks(upcoming);
   }, [tasks]);
 
   // Supabase Persistence Logic
@@ -749,9 +762,27 @@ const App: React.FC = () => {
   }, [brokerList, globalDbSearchQuery]);
 
   const updateHaulerField = useCallback((id: string, field: keyof Hauler, value: any) => {
-    setHaulers(prev => prev.map(h => h.id === id ? { ...h, [field]: value } : h));
+    setHaulers(prev => prev.map(h => {
+      if (h.id === id) {
+        const updates: Partial<Hauler> = { [field]: value };
+        if (field === 'status' && (value === HaulerStatus.SENT || value === HaulerStatus.REPLIED)) {
+          updates.lastContacted = new Date().toLocaleDateString();
+          updates.lastActionDate = new Date().toLocaleDateString();
+        }
+        return { ...h, ...updates };
+      }
+      return h;
+    }));
     if (selectedHauler?.id === id) {
-      setSelectedHauler(prev => prev ? ({ ...prev, [field]: value }) : null);
+      setSelectedHauler(prev => {
+        if (!prev) return null;
+        const updates: Partial<Hauler> = { [field]: value };
+        if (field === 'status' && (value === HaulerStatus.SENT || value === HaulerStatus.REPLIED)) {
+          updates.lastContacted = new Date().toLocaleDateString();
+          updates.lastActionDate = new Date().toLocaleDateString();
+        }
+        return { ...prev, ...updates };
+      });
     }
   }, [selectedHauler]);
 
@@ -1355,7 +1386,13 @@ const App: React.FC = () => {
     const plainTextBody = htmlToPlainText(hauler.draftContent || '');
     const body = encodeURIComponent(plainTextBody);
     window.location.href = `mailto:${hauler.email}?subject=${subject}&body=${body}`;
-    setHaulers(prev => prev.map(h => h.id === hauler.id ? { ...h, status: HaulerStatus.SENT, lastActionDate: new Date().toLocaleDateString() } : h));
+    const today = new Date().toLocaleDateString();
+    setHaulers(prev => prev.map(h => h.id === hauler.id ? { 
+      ...h, 
+      status: HaulerStatus.SENT, 
+      lastActionDate: today,
+      lastContacted: today
+    } : h));
     setIsDrafting(false);
   };
 
@@ -1422,9 +1459,15 @@ const App: React.FC = () => {
               </button>
               <button 
                 onClick={() => setIsManagingTasks(true)} 
-                className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-md text-indigo-700 dark:text-indigo-400 text-[10px] font-black uppercase hover:bg-indigo-100 transition shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-500 outline-none"
+                className="relative flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-md text-indigo-700 dark:text-indigo-400 text-[10px] font-black uppercase hover:bg-indigo-100 transition shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-500 outline-none"
               >
                 <CheckBadgeIcon className="w-4 h-4" aria-hidden="true" /> Tasks ({tasks.filter(t => t.status === TaskStatus.PENDING).length})
+                {upcomingTasks.length > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                  </span>
+                )}
               </button>
               <button 
                 onClick={() => setIsManagingTemplates(true)} 
@@ -1708,69 +1751,72 @@ const App: React.FC = () => {
                     {sortedHaulers.map((h) => {
                     const inDb = isHaulerInDb(h.email);
                     return (
-                      <li key={h.id} className={`bg-white dark:bg-gray-800 rounded-2xl border p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm transition-all group ${selectedHaulerIds.has(h.id) ? 'border-indigo-400 bg-indigo-50/30 dark:bg-indigo-900/10' : 'border-gray-100 dark:border-gray-700 hover:border-green-300/50 hover:shadow-md'}`}>
-                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                      <li key={h.id} className={`bg-white dark:bg-gray-800 rounded-2xl border p-5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 shadow-sm transition-all group ${selectedHaulerIds.has(h.id) ? 'border-indigo-400 bg-indigo-50/30 dark:bg-indigo-900/10' : 'border-gray-100 dark:border-gray-700 hover:border-green-300/50 hover:shadow-md'}`}>
+                        <div className="flex items-center gap-4 flex-1 min-w-0 w-full lg:w-auto">
                           <input 
                             type="checkbox" 
-                            className="w-5 h-5 rounded-lg border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-all"
+                            className="w-5 h-5 rounded-lg border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-all shrink-0"
                             checked={selectedHaulerIds.has(h.id)}
                             onChange={() => toggleHaulerSelection(h.id)}
                           />
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-3 mb-2">
-                            <h3 className="text-lg font-black truncate tracking-tight">{h.name}</h3>
-                            <div className="flex gap-2">
-                              <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.contactSource === 'Broker List' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'}`}>
-                                {h.contactSource === 'Broker List' ? 'Broker List' : 'Web Search'}
-                              </span>
-                              {h.contactSource === 'Search' && (
-                                <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 flex items-center gap-1">
-                                  <SparklesIcon className="w-2.5 h-2.5" /> Verified
+                            <div className="flex flex-wrap items-center gap-3 mb-2">
+                              <h3 className="text-lg font-black truncate tracking-tight max-w-[200px] sm:max-w-[300px] md:max-w-md">{h.name}</h3>
+                              <div className="flex flex-wrap gap-2">
+                                <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.contactSource === 'Broker List' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'}`}>
+                                  {h.contactSource === 'Broker List' ? 'Broker List' : 'Web Search'}
                                 </span>
-                              )}
-                              {inDb && (
-                                <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex items-center gap-1">
-                                  <CheckBadgeIcon className="w-2.5 h-2.5" /> In Database
+                                {h.contactSource === 'Search' && (
+                                  <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 flex items-center gap-1">
+                                    <SparklesIcon className="w-2.5 h-2.5" /> Verified
+                                  </span>
+                                )}
+                                {inDb && (
+                                  <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex items-center gap-1">
+                                    <CheckBadgeIcon className="w-2.5 h-2.5" /> In Database
+                                  </span>
+                                )}
+                                <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.type === HaulerType.CURRENT ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+                                  {h.type} Partner
                                 </span>
-                              )}
-                              <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.type === HaulerType.CURRENT ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
-                                {h.type} Partner
-                              </span>
-                              <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.status === HaulerStatus.SENT ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : h.status === HaulerStatus.REPLIED ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-400'}`}>
-                                {h.status}
-                              </span>
-                              {h.lastActionDate && (
-                                <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-gray-50 text-gray-500 dark:bg-gray-900 dark:text-gray-500 flex items-center gap-1">
-                                  <CalendarIcon className="w-2.5 h-2.5" /> {h.lastActionDate}
+                                <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.status === HaulerStatus.SENT ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : h.status === HaulerStatus.REPLIED ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-400'}`}>
+                                  {h.status}
                                 </span>
-                              )}
-                              {tasks.filter(t => t.haulerId === h.id && t.status === TaskStatus.PENDING).length > 0 && (
-                                <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 flex items-center gap-1">
-                                  <ClockIcon className="w-2.5 h-2.5" /> {tasks.filter(t => t.haulerId === h.id && t.status === TaskStatus.PENDING).length} Tasks
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-5 text-sm text-gray-600 dark:text-gray-400">
-                            <div className="flex items-center gap-2">
-                              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-800">
-                                <EnvelopeIcon className="w-4 h-4 text-gray-500" aria-hidden="true" /> 
-                                <span className="font-semibold text-gray-900 dark:text-gray-100">{h.email}</span>
+                                {h.lastActionDate && (
+                                  <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-gray-50 text-gray-500 dark:bg-gray-900 dark:text-gray-500 flex items-center gap-1" title="Last Action Date">
+                                    <CalendarIcon className="w-2.5 h-2.5" /> Action: {h.lastActionDate}
+                                  </span>
+                                )}
+                                {h.lastContacted && (
+                                  <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 flex items-center gap-1" title="Last Contacted Date">
+                                    <EnvelopeIcon className="w-2.5 h-2.5" /> Contacted: {h.lastContacted}
+                                  </span>
+                                )}
+                                {tasks.filter(t => t.haulerId === h.id && t.status === TaskStatus.PENDING).length > 0 && (
+                                  <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 flex items-center gap-1">
+                                    <ClockIcon className="w-2.5 h-2.5" /> {tasks.filter(t => t.haulerId === h.id && t.status === TaskStatus.PENDING).length} Tasks
+                                  </span>
+                                )}
                               </div>
-                              <button 
-                                onClick={() => handleCopyEmail(h.email)}
-                                className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest border border-transparent hover:border-blue-200 dark:hover:border-blue-800"
-                                title="Copy Email Address"
-                              >
-                                <ClipboardIcon className="w-4 h-4" /> Copy Email
-                              </button>
                             </div>
-                            {h.website && <a href={h.website} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold hover:underline focus-visible:underline outline-none"><GlobeAltIcon className="w-4 h-4" aria-hidden="true" /> Link</a>}
-                            <div className="flex items-center gap-1.5"><MapPinIcon className="w-4 h-4" aria-hidden="true" /> <span className="truncate max-w-[200px] text-xs font-medium">{h.location}</span></div>
+                            <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 dark:bg-gray-900 rounded-md border border-gray-100 dark:border-gray-800">
+                                <EnvelopeIcon className="w-3.5 h-3.5" />
+                                <span className="font-medium truncate max-w-[150px] sm:max-w-xs">{h.email}</span>
+                                <button 
+                                  onClick={() => handleCopyEmail(h.email)}
+                                  className="ml-1 p-0.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                  title="Copy Email"
+                                >
+                                  <ClipboardIcon className="w-3 h-3" />
+                                </button>
+                              </div>
+                              {h.website && <a href={h.website} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-indigo-600 transition-colors"><GlobeAltIcon className="w-3.5 h-3.5" /> Site</a>}
+                              <div className="flex items-center gap-1"><MapPinIcon className="w-3.5 h-3.5" /> <span className="truncate max-w-[120px]">{h.location}</span></div>
+                            </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 w-full md:w-auto border-t md:border-t-0 pt-4 md:pt-0">
+                        <div className="flex items-center gap-2 w-full lg:w-auto border-t lg:border-t-0 pt-4 lg:pt-0">
                           <div className="flex items-center gap-2 mr-2 border-r border-gray-200 dark:border-gray-700 pr-3">
                             <button 
                               onClick={() => handleCopyBrokerInfo(h)}

@@ -76,6 +76,7 @@ export interface Hauler {
   status: HaulerStatus;
   contactSource: 'Search' | 'Broker List';
   lastActionDate: string;
+  lastContacted?: string;
   draftSubject?: string;
   draftContent?: string;
   attachments: HaulerAttachment[];

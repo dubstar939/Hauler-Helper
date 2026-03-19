@@ -55,12 +55,15 @@ import {
   KeyIcon,
   ListBulletIcon,
   CommandLineIcon,
-  ClipboardIcon
+  ClipboardIcon,
+  PaintBrushIcon,
+  BoltIcon,
+  ArrowPathRoundedSquareIcon
 } from '@heroicons/react/24/outline';
 import L from 'leaflet';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
-import { Hauler, HaulerStatus, HaulerType, BrokerContact, HaulerAttachment, SearchResult, EmailTemplate, SavedSearch, Task, TaskStatus } from './types';
+import { Hauler, HaulerStatus, HaulerType, BrokerContact, HaulerAttachment, SearchResult, EmailTemplate, SavedSearch, Task, TaskStatus, ThemeConfig, FollowUpSequence } from './types';
 import { MOCK_BROKERS, BID_TEMPLATE_CURRENT, BID_TEMPLATE_NEW, EMAIL_SIGNATURE } from './constants';
 
 const SENDER_EMAIL = "chrisw@wasteexperts.com";
@@ -68,6 +71,8 @@ const DB_STORAGE_KEY = 'hauler_hunter_db_v1';
 const TEMPLATE_STORAGE_KEY = 'hauler_hunter_templates_v1';
 const SEARCH_STORAGE_KEY = 'hauler_hunter_saved_searches_v1';
 const TASK_STORAGE_KEY = 'hauler_hunter_tasks_v1';
+const THEME_STORAGE_KEY = 'hauler_hunter_theme_v1';
+const AUTOMATION_STORAGE_KEY = 'hauler_hunter_automation_v1';
 
 const PLACEHOLDERS = [
   { key: '{haulerName}', label: 'Hauler Name' },
@@ -286,6 +291,47 @@ const App: React.FC = () => {
     }
     return false;
   });
+
+  const [themeConfig, setThemeConfig] = useState<ThemeConfig>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(THEME_STORAGE_KEY);
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) { console.error(e); }
+      }
+    }
+    return {
+      primaryColor: '#4f46e5',
+      fontFamily: 'Inter',
+      companyName: 'Hauler Hunter'
+    };
+  });
+
+  const [sequences, setSequences] = useState<FollowUpSequence[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(AUTOMATION_STORAGE_KEY);
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) { console.error(e); }
+      }
+    }
+    return [];
+  });
+
+  const [isManagingBranding, setIsManagingBranding] = useState(false);
+  const [isManagingAutomation, setIsManagingAutomation] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(themeConfig));
+      document.documentElement.style.setProperty('--primary-color', themeConfig.primaryColor);
+      document.documentElement.style.setProperty('--font-family', themeConfig.fontFamily);
+    }
+  }, [themeConfig]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(AUTOMATION_STORAGE_KEY, JSON.stringify(sequences));
+    }
+  }, [sequences]);
 
   const toggleHaulerSelection = (id: string) => {
     setSelectedHaulerIds(prev => {
@@ -629,6 +675,23 @@ const App: React.FC = () => {
     dueDate: new Date().toISOString().split('T')[0],
     status: TaskStatus.PENDING
   });
+
+  const handleAssignSequence = (haulerId: string, sequenceId: string) => {
+    setHaulers(prev => prev.map(h => {
+      if (h.id === haulerId) {
+        if (!sequenceId) {
+          return { ...h, sequenceId: undefined, sequenceStepIndex: undefined, sequenceStartedAt: undefined };
+        }
+        return {
+          ...h,
+          sequenceId,
+          sequenceStepIndex: 0,
+          sequenceStartedAt: new Date().toISOString()
+        };
+      }
+      return h;
+    }));
+  };
 
   const handleCreateTask = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1463,9 +1526,15 @@ const App: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center gap-3">
-              <div className="bg-green-600 p-2 rounded-lg" aria-hidden="true"><TrashIcon className="w-6 h-6 text-white" /></div>
+              {themeConfig.logoUrl ? (
+                <img src={themeConfig.logoUrl} alt={themeConfig.companyName} className="w-10 h-10 rounded-lg object-contain" referrerPolicy="no-referrer" />
+              ) : (
+                <div className="bg-primary-600 p-2 rounded-lg" aria-hidden="true">
+                  <TrashIcon className="w-6 h-6 text-white" />
+                </div>
+              )}
               <div>
-                <h1 className="text-xl font-bold tracking-tight">Hauler Hunter</h1>
+                <h1 className="text-xl font-bold tracking-tight">{themeConfig.companyName || 'Hauler Hunter'}</h1>
                 <div className="flex items-center gap-1.5 text-[10px] text-gray-600 dark:text-gray-400 font-bold uppercase tracking-wider">
                   <span className={`w-1.5 h-1.5 rounded-full ${isOutlookConnected ? 'bg-green-500' : 'bg-red-500'} animate-pulse`} aria-hidden="true"></span>
                   Account: {SENDER_EMAIL}
@@ -1509,6 +1578,18 @@ const App: React.FC = () => {
                 className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300 text-[10px] font-black uppercase border border-gray-100 dark:border-gray-600 hover:bg-gray-100 transition focus-visible:ring-2 focus-visible:ring-gray-400 outline-none"
               >
                 <ServerIcon className="w-4 h-4 text-green-600" aria-hidden="true" /> {brokerList.length} Records
+              </button>
+              <button 
+                onClick={() => setIsManagingBranding(true)} 
+                className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300 text-[10px] font-black uppercase border border-gray-100 dark:border-gray-600 hover:bg-gray-100 transition focus-visible:ring-2 focus-visible:ring-gray-400 outline-none"
+              >
+                <PaintBrushIcon className="w-4 h-4 text-indigo-600" aria-hidden="true" /> Branding
+              </button>
+              <button 
+                onClick={() => setIsManagingAutomation(true)} 
+                className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300 text-[10px] font-black uppercase border border-gray-100 dark:border-gray-600 hover:bg-gray-100 transition focus-visible:ring-2 focus-visible:ring-gray-400 outline-none"
+              >
+                <BoltIcon className="w-4 h-4 text-amber-600" aria-hidden="true" /> Automation
               </button>
               <label className="cursor-pointer bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-amber-800 rounded-md py-1.5 px-3 text-sm font-bold text-green-700 hover:bg-green-100 transition shadow-sm flex items-center gap-2 focus-within:ring-2 focus-within:ring-green-500">
                 <ArrowUpOnSquareStackIcon className="w-4 h-4" aria-hidden="true" /> Import CSV
@@ -1820,6 +1901,11 @@ const App: React.FC = () => {
                                     <ClockIcon className="w-2.5 h-2.5" /> {tasks.filter(t => t.haulerId === h.id && t.status === TaskStatus.PENDING).length} Tasks
                                   </span>
                                 )}
+                                {h.sequenceId && (
+                                  <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 flex items-center gap-1">
+                                    <BoltIcon className="w-2.5 h-2.5" /> {sequences.find(s => s.id === h.sequenceId)?.name || 'Sequence'} (Step { (h.sequenceStepIndex || 0) + 1 })
+                                  </span>
+                                )}
                               </div>
                             </div>
                             <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -1841,6 +1927,17 @@ const App: React.FC = () => {
                         </div>
                         <div className="flex items-center gap-2 w-full lg:w-auto border-t lg:border-t-0 pt-4 lg:pt-0">
                           <div className="flex items-center gap-2 mr-2 border-r border-gray-200 dark:border-gray-700 pr-3">
+                            <select
+                              value={h.sequenceId || ''}
+                              onChange={(e) => handleAssignSequence(h.id, e.target.value)}
+                              className="text-[10px] font-black uppercase tracking-wider bg-gray-50 dark:bg-gray-700 border border-gray-100 dark:border-gray-600 rounded-xl px-2 py-2 outline-none focus:ring-2 focus:ring-amber-500 max-w-[100px]"
+                              title="Assign Automation Sequence"
+                            >
+                              <option value="">No Sequence</option>
+                              {sequences.filter(s => s.isActive).map(s => (
+                                <option key={s.id} value={s.id}>{s.name}</option>
+                              ))}
+                            </select>
                             <button 
                               onClick={() => handleCopyBrokerInfo(h)}
                               className="p-2.5 bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-600 transition focus-visible:ring-2 focus-visible:ring-gray-400 outline-none"
@@ -2267,6 +2364,19 @@ const App: React.FC = () => {
                 </div>
               </div>
               <div className="flex items-center gap-6">
+                <span className="w-16 text-gray-600 dark:text-gray-400 font-black uppercase tracking-widest text-[11px]">Sequence:</span>
+                <select
+                  value={selectedHauler.sequenceId || ''}
+                  onChange={(e) => handleAssignSequence(selectedHauler.id, e.target.value)}
+                  className="flex-1 bg-gray-50 dark:bg-gray-800 px-5 py-2.5 rounded-xl border border-gray-100 dark:border-gray-700 font-bold text-sm outline-none focus:ring-2 focus:ring-amber-500 transition-all shadow-inner"
+                >
+                  <option value="">No Automated Follow-up</option>
+                  {sequences.filter(s => s.isActive).map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-6">
                 <label htmlFor="draft-sub" className="w-16 text-gray-600 dark:text-gray-400 font-black uppercase tracking-widest text-[11px]">Subject:</label>
                 <input id="draft-sub" type="text" value={selectedHauler.draftSubject || ''} onChange={(e) => updateHaulerField(selectedHauler.id, 'draftSubject', e.target.value)} className="flex-1 bg-white dark:bg-gray-950 px-5 py-3 rounded-xl border-2 border-gray-100 dark:border-gray-700 font-black text-sm outline-none focus:border-blue-500 transition-all shadow-sm" />
               </div>
@@ -2677,6 +2787,271 @@ const App: React.FC = () => {
               </div>
               <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-indigo-700 shadow-xl focus-visible:ring-2 focus-visible:ring-indigo-400 outline-none">PERSIST TO DATABASE</button>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Branding Modal */}
+      {isManagingBranding && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-100 dark:border-gray-700">
+            <div className="p-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg">
+                  <PaintBrushIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Company Branding</h2>
+              </div>
+              <button onClick={() => setIsManagingBranding(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition">
+                <XMarkIcon className="w-6 h-6 text-gray-400" />
+              </button>
+            </div>
+            <div className="p-6 space-y-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Company Name</label>
+                  <input
+                    type="text"
+                    value={themeConfig.companyName}
+                    onChange={(e) => setThemeConfig({ ...themeConfig, companyName: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition"
+                    placeholder="e.g. Acme Logistics"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Primary Branding Color</label>
+                  <div className="flex gap-3 items-center">
+                    <input
+                      type="color"
+                      value={themeConfig.primaryColor}
+                      onChange={(e) => setThemeConfig({ ...themeConfig, primaryColor: e.target.value })}
+                      className="w-12 h-12 rounded-lg cursor-pointer border-none bg-transparent"
+                    />
+                    <input
+                      type="text"
+                      value={themeConfig.primaryColor}
+                      onChange={(e) => setThemeConfig({ ...themeConfig, primaryColor: e.target.value })}
+                      className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition font-mono"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Typography Style</label>
+                  <select
+                    value={themeConfig.fontFamily}
+                    onChange={(e) => setThemeConfig({ ...themeConfig, fontFamily: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition"
+                  >
+                    <option value="'Inter', sans-serif">Modern Sans (Inter)</option>
+                    <option value="'Space Grotesk', sans-serif">Technical (Space Grotesk)</option>
+                    <option value="'Outfit', sans-serif">Approachable (Outfit)</option>
+                    <option value="system-ui, sans-serif">System Default</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Logo URL (Optional)</label>
+                  <input
+                    type="text"
+                    value={themeConfig.logoUrl || ''}
+                    onChange={(e) => setThemeConfig({ ...themeConfig, logoUrl: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition"
+                    placeholder="https://example.com/logo.png"
+                  />
+                </div>
+              </div>
+              
+              <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-2xl border border-gray-100 dark:border-gray-800">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Preview</p>
+                <div className="flex items-center gap-4">
+                  <div 
+                    className="w-10 h-10 rounded-xl shadow-lg flex items-center justify-center text-white font-bold text-xl"
+                    style={{ backgroundColor: themeConfig.primaryColor }}
+                  >
+                    {themeConfig.companyName.charAt(0) || 'A'}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900 dark:text-white" style={{ fontFamily: themeConfig.fontFamily }}>
+                      {themeConfig.companyName || 'Acme Logistics'}
+                    </h3>
+                    <p className="text-sm text-gray-500">Branding active</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-700">
+              <button 
+                onClick={() => setIsManagingBranding(false)}
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 dark:shadow-none transition transform active:scale-[0.98]"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Automation Modal */}
+      {isManagingAutomation && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden border border-gray-100 dark:border-gray-700 flex flex-col">
+            <div className="p-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg">
+                  <BoltIcon className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">Follow-up Automation</h2>
+                  <p className="text-xs text-gray-500">Automated sequences for unresponsive haulers</p>
+                </div>
+              </div>
+              <button onClick={() => setIsManagingAutomation(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition">
+                <XMarkIcon className="w-6 h-6 text-gray-400" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6 space-y-8">
+              {/* Active Sequences */}
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-sm font-black uppercase tracking-widest text-gray-400">Active Sequences</h3>
+                  <button 
+                    onClick={() => {
+                      const newSeq: FollowUpSequence = {
+                        id: Math.random().toString(36).substr(2, 9),
+                        name: 'New Sequence',
+                        steps: [{ id: '1', templateId: templates[0]?.id || '', delayDays: 3 }],
+                        isActive: true
+                      };
+                      setSequences([...sequences, newSeq]);
+                    }}
+                    className="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1"
+                  >
+                    <PlusIcon className="w-3 h-3" /> Create New
+                  </button>
+                </div>
+                
+                {sequences.length === 0 ? (
+                  <div className="text-center py-12 bg-gray-50 dark:bg-gray-900/50 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700">
+                    <p className="text-gray-400">No automation sequences defined yet.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4">
+                    {sequences.map(seq => (
+                      <div key={seq.id} className="p-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm space-y-4">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <input
+                              type="text"
+                              value={seq.name}
+                              onChange={(e) => {
+                                setSequences(sequences.map(s => s.id === seq.id ? { ...s, name: e.target.value } : s));
+                              }}
+                              className="text-lg font-bold bg-transparent border-none p-0 focus:ring-0 text-gray-900 dark:text-white w-full"
+                            />
+                            <div className="flex items-center gap-4 mt-1">
+                              <span className="text-xs text-gray-500 flex items-center gap-1">
+                                <ListBulletIcon className="w-3 h-3" /> {seq.steps.length} Steps
+                              </span>
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={seq.isActive}
+                                  onChange={(e) => {
+                                    setSequences(sequences.map(s => s.id === seq.id ? { ...s, isActive: e.target.checked } : s));
+                                  }}
+                                  className="w-4 h-4 text-amber-600 rounded border-gray-300 focus:ring-amber-500"
+                                />
+                                <span className="text-xs font-bold text-gray-600 dark:text-gray-400">Active</span>
+                              </label>
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => setSequences(sequences.filter(s => s.id !== seq.id))}
+                            className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-400 hover:text-red-600 rounded-lg transition"
+                          >
+                            <TrashIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {/* Steps */}
+                        <div className="space-y-3 pl-4 border-l-2 border-amber-100 dark:border-amber-900/30 ml-2">
+                          {seq.steps.map((step, idx) => (
+                            <div key={step.id} className="flex items-center gap-4 bg-gray-50 dark:bg-gray-800/50 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
+                              <div className="w-6 h-6 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-[10px] font-bold text-amber-700 dark:text-amber-400">
+                                {idx + 1}
+                              </div>
+                              <div className="flex-1 grid grid-cols-2 gap-3">
+                                <select
+                                  value={step.templateId}
+                                  onChange={(e) => {
+                                    const newSteps = [...seq.steps];
+                                    newSteps[idx].templateId = e.target.value;
+                                    setSequences(sequences.map(s => s.id === seq.id ? { ...s, steps: newSteps } : s));
+                                  }}
+                                  className="text-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-amber-500"
+                                >
+                                  {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                </select>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] font-bold text-gray-400 uppercase">Wait</span>
+                                  <input
+                                    type="number"
+                                    value={step.delayDays}
+                                    onChange={(e) => {
+                                      const newSteps = [...seq.steps];
+                                      newSteps[idx].delayDays = parseInt(e.target.value) || 0;
+                                      setSequences(sequences.map(s => s.id === seq.id ? { ...s, steps: newSteps } : s));
+                                    }}
+                                    className="w-12 text-xs bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-amber-500"
+                                  />
+                                  <span className="text-[10px] font-bold text-gray-400 uppercase">Days</span>
+                                </div>
+                              </div>
+                              <button 
+                                onClick={() => {
+                                  const newSteps = seq.steps.filter(s => s.id !== step.id);
+                                  setSequences(sequences.map(s => s.id === seq.id ? { ...s, steps: newSteps } : s));
+                                }}
+                                className="p-1 text-gray-400 hover:text-red-500 transition"
+                              >
+                                <XMarkIcon className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ))}
+                          <button 
+                            onClick={() => {
+                              const newStep = { id: Math.random().toString(36).substr(2, 9), templateId: templates[0]?.id || '', delayDays: 3 };
+                              setSequences(sequences.map(s => s.id === seq.id ? { ...s, steps: [...s.steps, newStep] } : s));
+                            }}
+                            className="text-[10px] font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1 mt-2"
+                          >
+                            <PlusIcon className="w-3 h-3" /> Add Step
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Automation Status / Manual Trigger */}
+              <div className="p-6 bg-amber-50 dark:bg-amber-900/10 rounded-2xl border border-amber-100 dark:border-amber-900/20">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h4 className="font-bold text-amber-900 dark:text-amber-400">Automation Engine</h4>
+                    <p className="text-sm text-amber-700/70 dark:text-amber-400/60">Checks for haulers who need follow-ups based on active sequences.</p>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      // Simulate processing automations
+                      alert('Automation engine check complete. 0 new follow-ups triggered.');
+                    }}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-lg shadow-amber-200 dark:shadow-none transition flex items-center gap-2"
+                  >
+                    <ArrowPathRoundedSquareIcon className="w-4 h-4" /> Run Check Now
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

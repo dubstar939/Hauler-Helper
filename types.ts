@@ -81,6 +81,29 @@ export interface Hauler {
   draftContent?: string;
   attachments: HaulerAttachment[];
   coordinates?: [number, number]; // [lat, lng]
+  sequenceId?: string;
+  sequenceStepIndex?: number;
+  sequenceStartedAt?: string;
+}
+
+export interface ThemeConfig {
+  primaryColor: string;
+  fontFamily: string;
+  companyName: string;
+  logoUrl?: string;
+}
+
+export interface FollowUpStep {
+  id: string;
+  delayDays: number;
+  templateId: string;
+}
+
+export interface FollowUpSequence {
+  id: string;
+  name: string;
+  steps: FollowUpStep[];
+  isActive: boolean;
 }
 
 export interface SearchResult {

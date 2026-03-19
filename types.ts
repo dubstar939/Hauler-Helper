@@ -7,7 +7,8 @@ export enum HaulerStatus {
 
 export enum HaulerType {
   CURRENT = 'Current',
-  NEW = 'New'
+  NEW = 'New',
+  CLIENT = 'Client'
 }
 
 export interface BrokerContact {

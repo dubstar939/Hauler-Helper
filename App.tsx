@@ -1,5 +1,8 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import L from 'leaflet';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 import { supabase } from './src/supabase';
 import { 
   MagnifyingGlassIcon, 
@@ -60,11 +63,12 @@ import {
   BoltIcon,
   ArrowPathRoundedSquareIcon
 } from '@heroicons/react/24/outline';
-import L from 'leaflet';
-import ReactQuill from 'react-quill-new';
-import 'react-quill-new/dist/quill.snow.css';
+import 'leaflet/dist/leaflet.css';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
+import 'leaflet.markercluster';
 import { Hauler, HaulerStatus, HaulerType, BrokerContact, HaulerAttachment, SearchResult, EmailTemplate, SavedSearch, Task, TaskStatus, ThemeConfig, FollowUpSequence } from './types';
-import { MOCK_BROKERS, BID_TEMPLATE_CURRENT, BID_TEMPLATE_NEW, EMAIL_SIGNATURE } from './constants';
+import { MOCK_BROKERS, BID_TEMPLATE_CURRENT, BID_TEMPLATE_NEW, TEMPLATE_CLIENT_OVERAGE, TEMPLATE_CLIENT_CONTAMINATION, EMAIL_SIGNATURE } from './constants';
 
 const SENDER_EMAIL = "chrisw@wasteexperts.com";
 const DB_STORAGE_KEY = 'hauler_hunter_db_v1';
@@ -81,6 +85,9 @@ const PLACEHOLDERS = [
   { key: '{clientRef}', label: 'Client Ref' },
   { key: '{accountInfo}', label: 'Account Info' },
   { key: '{signature}', label: 'Signature' },
+  { key: '{date}', label: 'Current Date' },
+  { key: '{overageAmount}', label: 'Overage Details' },
+  { key: '{contaminationType}', label: 'Contamination Type' },
 ];
 
 type SortKey = 'name' | 'status' | 'type' | 'lastActionDate';
@@ -104,6 +111,22 @@ const DEFAULT_TEMPLATES: EmailTemplate[] = [
     category: HaulerType.NEW,
     subject: 'New Price Opportunity - Waste & Recycling Services - {address}',
     content: BID_TEMPLATE_NEW,
+    attachments: []
+  },
+  {
+    id: 't-default-overage',
+    name: 'Dumpster Overage Report',
+    category: HaulerType.CLIENT,
+    subject: 'Overage Notification - {address} - {accountInfo}',
+    content: TEMPLATE_CLIENT_OVERAGE,
+    attachments: []
+  },
+  {
+    id: 't-default-contamination',
+    name: 'Recycling Contamination',
+    category: HaulerType.CLIENT,
+    subject: 'Contamination Alert - {address} - {accountInfo}',
+    content: TEMPLATE_CLIENT_CONTAMINATION,
     attachments: []
   }
 ];
@@ -403,6 +426,7 @@ const App: React.FC = () => {
   const templateBodyRef = useRef<HTMLTextAreaElement>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
+  const clusterGroupRef = useRef<any>(null);
   const markersRef = useRef<L.Marker[]>([]);
   const draftQuillRef = useRef<any>(null);
 
@@ -609,6 +633,15 @@ const App: React.FC = () => {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
       }).addTo(map);
 
+      const clusterGroup = (L as any).markerClusterGroup({
+        showCoverageOnHover: false,
+        zoomToBoundsOnClick: true,
+        spiderfyOnMaxZoom: true,
+        chunkedLoading: true
+      });
+      map.addLayer(clusterGroup);
+      clusterGroupRef.current = clusterGroup;
+
       mapInstanceRef.current = map;
     }
 
@@ -621,8 +654,26 @@ const App: React.FC = () => {
   }, [viewMode]);
 
   useEffect(() => {
-    if (viewMode === 'map' && mapInstanceRef.current) {
-      markersRef.current.forEach(m => m.remove());
+    const handleMapAction = (e: any) => {
+      const { type, id } = e.detail;
+      const hauler = haulers.find(h => h.id === id);
+      if (!hauler) return;
+      
+      if (type === 'draft') {
+        setSelectedHauler(hauler);
+        setIsDrafting(true);
+      } else if (type === 'task') {
+        setSelectedHauler(hauler);
+        setIsCreatingTask(true);
+      }
+    };
+    window.addEventListener('map-action', handleMapAction);
+    return () => window.removeEventListener('map-action', handleMapAction);
+  }, [haulers]);
+
+  useEffect(() => {
+    if (viewMode === 'map' && mapInstanceRef.current && clusterGroupRef.current) {
+      clusterGroupRef.current.clearLayers();
       markersRef.current = [];
 
       const bounds = L.latLngBounds([]);
@@ -634,30 +685,36 @@ const App: React.FC = () => {
           const marker = L.marker(h.coordinates, {
             icon: L.divIcon({
               className: 'custom-marker',
-              html: `<div class="bg-green-600 w-8 h-8 rounded-full border-4 border-white shadow-xl flex items-center justify-center text-white"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></div>`,
+              html: `<div class="bg-primary-600 w-8 h-8 rounded-full border-4 border-white shadow-xl flex items-center justify-center text-white"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></div>`,
               iconSize: [32, 32],
               iconAnchor: [16, 32]
             })
-          }).addTo(mapInstanceRef.current!);
-
-          marker.bindPopup(`
-            <div class="p-2">
-              <h4 class="font-black text-sm">${h.name}</h4>
-              <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-2">${h.contactSource === 'Search' ? 'Web Search' : 'Broker List'}</p>
-              <button id="marker-draft-${h.id}" class="w-full py-1.5 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-lg hover:bg-indigo-700 transition">Draft Email</button>
-            </div>
-          `);
-
-          marker.on('popupopen', () => {
-             const btn = document.getElementById(`marker-draft-${h.id}`);
-             if (btn) {
-               btn.onclick = () => {
-                 setSelectedHauler(h);
-                 setIsDrafting(true);
-               };
-             }
           });
 
+          marker.bindPopup(`
+            <div class="p-4 min-w-[200px] font-sans">
+              <div class="flex items-center gap-2 mb-2">
+                <div class="w-2 h-2 rounded-full bg-primary-500"></div>
+                <h4 class="font-black text-sm text-gray-900">${h.name}</h4>
+              </div>
+              <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-3">${h.location || 'Location Unknown'}</p>
+              
+              <div class="space-y-2">
+                <button onclick="window.dispatchEvent(new CustomEvent('map-action', {detail: {type: 'draft', id: '${h.id}'}}))" class="w-full py-2 bg-primary-600 text-white text-[10px] font-black uppercase rounded-lg hover:bg-primary-700 transition shadow-sm">Draft Email</button>
+                <button onclick="window.dispatchEvent(new CustomEvent('map-action', {detail: {type: 'task', id: '${h.id}'}}))" class="w-full py-2 bg-gray-100 text-gray-700 text-[10px] font-black uppercase rounded-lg hover:bg-gray-200 transition">Add Task</button>
+              </div>
+              
+              <div class="mt-3 pt-3 border-t border-gray-100 flex justify-between items-center">
+                <span class="text-[9px] font-bold text-gray-400 uppercase">${h.type} Partner</span>
+                <span class="text-[9px] font-bold text-primary-600 uppercase">${h.status}</span>
+              </div>
+            </div>
+          `, {
+            className: 'custom-leaflet-popup',
+            maxWidth: 300
+          });
+
+          clusterGroupRef.current.addLayer(marker);
           markersRef.current.push(marker);
           bounds.extend(h.coordinates);
         }
@@ -1497,6 +1554,64 @@ const App: React.FC = () => {
     );
   };
 
+  const handleRunAutomationCheck = () => {
+    let triggeredCount = 0;
+    const now = new Date();
+    
+    const updatedHaulers = haulers.map(hauler => {
+      if (!hauler.sequenceId || hauler.status === HaulerStatus.REPLIED) return hauler;
+      
+      const sequence = sequences.find(s => s.id === hauler.sequenceId && s.isActive);
+      if (!sequence) return hauler;
+      
+      const currentStepIndex = hauler.sequenceStepIndex ?? -1;
+      const nextStepIndex = currentStepIndex + 1;
+      
+      if (nextStepIndex >= sequence.steps.length) return hauler;
+      
+      const nextStep = sequence.steps[nextStepIndex];
+      const lastContactDate = hauler.sequenceStartedAt ? new Date(hauler.sequenceStartedAt) : new Date(hauler.lastActionDate);
+      
+      const diffTime = Math.abs(now.getTime() - lastContactDate.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays >= nextStep.delayDays) {
+        triggeredCount++;
+        const template = templates.find(t => t.id === nextStep.templateId);
+        
+        const newTask: Task = {
+          id: `task-auto-${Date.now()}-${hauler.id}`,
+          haulerId: hauler.id,
+          haulerName: hauler.name,
+          title: `Automated Follow-up: ${template?.name || 'Step ' + (nextStepIndex + 1)}`,
+          description: `Sequence: ${sequence.name}. Step ${nextStepIndex + 1} triggered after ${nextStep.delayDays} days.`,
+          dueDate: now.toISOString().split('T')[0],
+          status: TaskStatus.PENDING,
+          createdAt: now.toISOString()
+        };
+        setTasks(prev => [newTask, ...prev]);
+        
+        return {
+          ...hauler,
+          sequenceStepIndex: nextStepIndex,
+          sequenceStartedAt: now.toISOString(),
+          lastActionDate: now.toISOString()
+        };
+      }
+      
+      return hauler;
+    });
+    
+    if (triggeredCount > 0) {
+      setHaulers(updatedHaulers);
+      setImportFeedback(`Automation check complete. ${triggeredCount} follow-ups triggered.`);
+      setTimeout(() => setImportFeedback(null), 3000);
+    } else {
+      setImportFeedback("Automation check complete. No new follow-ups needed.");
+      setTimeout(() => setImportFeedback(null), 3000);
+    }
+  };
+
   const isHaulerInDb = (email: string) => {
     return brokerList.some(b => b.brokerEmail.toLowerCase() === email.toLowerCase());
   };
@@ -2064,6 +2179,7 @@ const App: React.FC = () => {
                       <select id="temp-cat" value={editingTemplate.category} onChange={e => setEditingTemplate({...editingTemplate, category: e.target.value as HaulerType})} className="w-full px-5 py-3 rounded-xl border-2 border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-bold outline-none focus:border-amber-500 transition-all">
                         <option value={HaulerType.CURRENT}>Current Provider</option>
                         <option value={HaulerType.NEW}>New Prospect</option>
+                        <option value={HaulerType.CLIENT}>Client / Managed Facility</option>
                       </select>
                     </div>
                   </div>
@@ -3041,10 +3157,7 @@ const App: React.FC = () => {
                     <p className="text-sm text-amber-700/70 dark:text-amber-400/60">Checks for haulers who need follow-ups based on active sequences.</p>
                   </div>
                   <button 
-                    onClick={() => {
-                      // Simulate processing automations
-                      alert('Automation engine check complete. 0 new follow-ups triggered.');
-                    }}
+                    onClick={handleRunAutomationCheck}
                     className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-lg shadow-amber-200 dark:shadow-none transition flex items-center gap-2"
                   >
                     <ArrowPathRoundedSquareIcon className="w-4 h-4" /> Run Check Now

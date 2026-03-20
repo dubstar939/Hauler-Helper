@@ -329,6 +329,12 @@ const App: React.FC = () => {
     };
   });
 
+  const [logoError, setLogoError] = useState(false);
+
+  useEffect(() => {
+    setLogoError(false);
+  }, [themeConfig.logoUrl]);
+
   const [sequences, setSequences] = useState<FollowUpSequence[]>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(AUTOMATION_STORAGE_KEY);
@@ -410,6 +416,28 @@ const App: React.FC = () => {
 
     setBulkSendStatus('completed');
     setImportFeedback(`Successfully sent emails to ${total} partners.`);
+    setTimeout(() => setImportFeedback(null), 3000);
+  };
+
+  const handleBulkCreateTask = () => {
+    if (selectedHaulerIds.size === 0) return;
+    const selectedHaulersList = haulers.filter(h => selectedHaulerIds.has(h.id));
+    const haulerNames = selectedHaulersList.map(h => h.name).join(', ');
+    
+    const newTask: Task = {
+      id: `task-bulk-${Date.now()}`,
+      haulerId: 'bulk',
+      haulerName: 'Multiple Haulers',
+      title: 'Follow-up on selected haulers',
+      description: `Follow-up with: ${haulerNames}`,
+      dueDate: new Date().toISOString().split('T')[0],
+      status: TaskStatus.PENDING,
+      createdAt: new Date().toISOString()
+    };
+    
+    setTasks(prev => [newTask, ...prev]);
+    setImportFeedback(`Created a single task for ${selectedHaulerIds.size} partners.`);
+    setSelectedHaulerIds(new Set());
     setTimeout(() => setImportFeedback(null), 3000);
   };
 
@@ -1641,8 +1669,14 @@ const App: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center gap-3">
-              {themeConfig.logoUrl ? (
-                <img src={themeConfig.logoUrl} alt={themeConfig.companyName} className="w-10 h-10 rounded-lg object-contain" referrerPolicy="no-referrer" />
+              {themeConfig.logoUrl && !logoError ? (
+                <img 
+                  src={themeConfig.logoUrl} 
+                  alt={themeConfig.companyName} 
+                  className="w-10 h-10 rounded-lg object-contain" 
+                  referrerPolicy="no-referrer" 
+                  onError={() => setLogoError(true)}
+                />
               ) : (
                 <div className="bg-primary-600 p-2 rounded-lg" aria-hidden="true">
                   <TrashIcon className="w-6 h-6 text-white" />
@@ -2133,6 +2167,13 @@ const App: React.FC = () => {
                     >
                       <PaperAirplaneIcon className="w-4 h-4" />
                       Send Bulk Email
+                    </button>
+                    <button 
+                      onClick={handleBulkCreateTask}
+                      className="px-6 py-2 bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-800 transition-all shadow-lg flex items-center gap-2 border border-white/10"
+                    >
+                      <CheckBadgeIcon className="w-4 h-4" />
+                      Create Bulk Task
                     </button>
                   </div>
                 </div>

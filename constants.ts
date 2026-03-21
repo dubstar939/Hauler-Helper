@@ -8,21 +8,56 @@ www.wasteexperts.com`;
 
 export const BID_TEMPLATE_CURRENT = `Good Morning,
 
-Please see attached form.
+Please provide a competitive bid to retain customer {accountInfo} (details attached).
 
-We are seeking pricing to retain customer {accountInfo}
+Requirements:
+- 36-month term
+- No auto-renewal
+- Rate firm Year 1; 5% CPI cap Years 2 & 3
+- 30-day termination notice
 
-Please provide your best pricing. The customer is seeking a 36-month service agreement, with no auto-renewal, rate firm first year and CPI cap of 5% on year 2 & 3. 30 day out.
+We value our partnership and look forward to your best proposal.
 
 Thank you,
 {signature}`;
 
 export const BID_TEMPLATE_NEW = `Hi {haulerName},
 
-Please see attached form.
+We are currently seeking all-in pricing for a new customer at {address} (details attached).
 
-We are seeking pricing for a customer located on {address}. If the area referenced is within your service area, please provide your best (all in) pricing. The customer is seeking a 36-month service agreement, with no auto-renewal, rate firm first year and CPI cap of 5% on year 2 & 3. 30 day out.
+Requirements:
+- 36-month term
+- No auto-renewal
+- Rate firm Year 1; 5% CPI cap Years 2 & 3
+- 30-day termination notice
 
+Please provide your best rates for this opportunity.
+
+Best regards,
+{signature}`;
+
+export const TEMPLATE_CLIENT_OVERAGE = `Hi {haulerName},
+
+We have received a report of a dumpster overage at the following location:
+Address: {address}
+Account: {accountInfo}
+Overage Details: {overageAmount}
+
+Please review and let us know if this was a one-time occurrence or if we need to adjust the service frequency.
+
+Thank you,
+{signature}`;
+
+export const TEMPLATE_CLIENT_CONTAMINATION = `Hi {haulerName},
+
+We are reporting a recycling contamination issue at:
+Address: {address}
+Account: {accountInfo}
+Contamination Type: {contaminationType}
+
+Please provide photos of the contamination so we can review with the facility manager.
+
+Best regards,
 {signature}`;
 
 export const TEMPLATE_MISSED_PICKUP = `Hi {haulerName},

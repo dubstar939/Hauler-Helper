@@ -7,7 +7,8 @@ export enum HaulerStatus {
 
 export enum HaulerType {
   CURRENT = 'Current',
-  NEW = 'New'
+  NEW = 'New',
+  CLIENT = 'Client'
 }
 
 export interface BrokerContact {
@@ -30,6 +31,7 @@ export interface EmailTemplate {
   category: HaulerType;
   subject: string;
   content: string;
+  attachments: HaulerAttachment[];
 }
 
 export interface SavedSearch {
@@ -55,8 +57,8 @@ export enum TaskStatus {
 
 export interface Task {
   id: string;
-  haulerId: string;
-  haulerName: string;
+  haulerId?: string;
+  haulerName?: string;
   title: string;
   description?: string;
   dueDate: string;
@@ -75,10 +77,34 @@ export interface Hauler {
   status: HaulerStatus;
   contactSource: 'Search' | 'Broker List';
   lastActionDate: string;
+  lastContacted?: string;
   draftSubject?: string;
   draftContent?: string;
   attachments: HaulerAttachment[];
   coordinates?: [number, number]; // [lat, lng]
+  sequenceId?: string;
+  sequenceStepIndex?: number;
+  sequenceStartedAt?: string;
+}
+
+export interface ThemeConfig {
+  primaryColor: string;
+  fontFamily: string;
+  companyName: string;
+  logoUrl?: string;
+}
+
+export interface FollowUpStep {
+  id: string;
+  delayDays: number;
+  templateId: string;
+}
+
+export interface FollowUpSequence {
+  id: string;
+  name: string;
+  steps: FollowUpStep[];
+  isActive: boolean;
 }
 
 export interface SearchResult {

@@ -55,6 +55,12 @@ export enum TaskStatus {
   OVERDUE = 'Overdue'
 }
 
+export enum TaskPriority {
+  LOW = 'Low',
+  MEDIUM = 'Medium',
+  HIGH = 'High'
+}
+
 export interface Task {
   id: string;
   haulerId?: string;
@@ -63,6 +69,7 @@ export interface Task {
   description?: string;
   dueDate: string;
   status: TaskStatus;
+  priority: TaskPriority;
   createdAt: string;
 }
 

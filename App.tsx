@@ -67,7 +67,7 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
-import { Hauler, HaulerStatus, HaulerType, BrokerContact, HaulerAttachment, SearchResult, EmailTemplate, SavedSearch, Task, TaskStatus, ThemeConfig, FollowUpSequence } from './types';
+import { Hauler, HaulerStatus, HaulerType, BrokerContact, HaulerAttachment, SearchResult, EmailTemplate, SavedSearch, Task, TaskStatus, TaskPriority, ThemeConfig, FollowUpSequence } from './types';
 import { MOCK_BROKERS, BID_TEMPLATE_CURRENT, BID_TEMPLATE_NEW, TEMPLATE_CLIENT_OVERAGE, TEMPLATE_CLIENT_CONTAMINATION, EMAIL_SIGNATURE } from './constants';
 
 const SENDER_EMAIL = "chrisw@wasteexperts.com";
@@ -286,6 +286,9 @@ const App: React.FC = () => {
 
   const [isManagingTasks, setIsManagingTasks] = useState(false);
   const [taskFilter, setTaskFilter] = useState<'ALL' | 'PENDING' | 'COMPLETED' | 'OVERDUE'>('ALL');
+  const [taskHaulerFilter, setTaskHaulerFilter] = useState<string>('ALL');
+  const [taskPriorityFilter, setTaskPriorityFilter] = useState<'ALL' | TaskPriority>('ALL');
+  const [taskDateRange, setTaskDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
   
@@ -432,6 +435,7 @@ const App: React.FC = () => {
       description: `Follow-up with: ${haulerNames}`,
       dueDate: new Date().toISOString().split('T')[0],
       status: TaskStatus.PENDING,
+      priority: TaskPriority.MEDIUM,
       createdAt: new Date().toISOString()
     };
     
@@ -758,7 +762,8 @@ const App: React.FC = () => {
     title: '',
     description: '',
     dueDate: new Date().toISOString().split('T')[0],
-    status: TaskStatus.PENDING
+    status: TaskStatus.PENDING,
+    priority: TaskPriority.MEDIUM
   });
 
   const handleAssignSequence = (haulerId: string, sequenceId: string) => {
@@ -790,6 +795,7 @@ const App: React.FC = () => {
       description: newTaskData.description,
       dueDate: newTaskData.dueDate || new Date().toISOString().split('T')[0],
       status: TaskStatus.PENDING,
+      priority: newTaskData.priority || TaskPriority.MEDIUM,
       createdAt: new Date().toISOString()
     };
 
@@ -1118,7 +1124,13 @@ const App: React.FC = () => {
 
   const geocodeLocation = async (locString: string): Promise<[number, number] | undefined> => {
     try {
-      const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locString)}&limit=1`);
+      // Add a small delay to avoid rate limiting if called in rapid succession
+      await new Promise(resolve => setTimeout(resolve, 200));
+      const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locString)}&limit=1`, {
+        headers: {
+          'User-Agent': 'HaulerHunter/1.0 (contact: ' + SENDER_EMAIL + ')'
+        }
+      });
       const data = await resp.json();
       if (data && data[0]) {
         return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
@@ -1511,39 +1523,70 @@ const App: React.FC = () => {
       try {
         const text = event.target?.result as string;
         const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
-        if (lines.length < 2) return;
+        if (lines.length < 1) return;
+        
         const splitCSVLine = (line: string): string[] => {
           const parts = line.match(/(?:[^,"']+|"(?:[^"]|"")*"|'(?:[^']|"")*')+/g);
           return parts ? parts.map(part => part.replace(/^"|"$/g, '').replace(/^'|'$/g, '').trim()) : [];
         };
-        let currentHeaders: string[] = [];
+
         let colMap: { [key: string]: number } = {};
         const incomingBrokers: BrokerContact[] = [];
-        for (let i = 0; i < lines.length; i++) {
+        
+        // Detect if there's a header
+        const firstLineParts = splitCSVLine(lines[0]).map(p => p.toLowerCase());
+        const hasHeader = (firstLineParts.includes('name') || firstLineParts.includes('hauler name') || firstLineParts.includes('company')) && 
+                          (firstLineParts.includes('email') || firstLineParts.includes('hauler contact') || firstLineParts.includes('contact'));
+
+        let startIndex = 0;
+        if (hasHeader) {
+          firstLineParts.forEach((h, idx) => { 
+            if (h.includes('name') || h.includes('company')) colMap['name'] = idx;
+            if (h.includes('email') || h.includes('contact')) colMap['email'] = idx;
+            if (h.includes('state')) colMap['states'] = idx;
+            if (h.includes('note')) colMap['notes'] = idx;
+          });
+          startIndex = 1;
+        } else {
+          // No header, try to guess based on first line
+          const parts = splitCSVLine(lines[0]);
+          parts.forEach((p, idx) => {
+            if (p.includes('@')) colMap['email'] = idx;
+            else if (!colMap['name']) colMap['name'] = idx;
+          });
+        }
+
+        for (let i = startIndex; i < lines.length; i++) {
           const parts = splitCSVLine(lines[i]);
           if (parts.length === 0) continue;
-          const lowerParts = parts.map(p => p.toLowerCase());
-          const isHeader = (lowerParts.includes('name') || lowerParts.includes('hauler name')) && (lowerParts.includes('email') || lowerParts.includes('hauler contact'));
-          if (isHeader) {
-            currentHeaders = lowerParts;
-            colMap = {};
-            currentHeaders.forEach((h, idx) => { colMap[h] = idx; });
-            continue;
-          }
-          if (currentHeaders.length === 0) continue;
-          const haulerName = parts[colMap['hauler name'] ?? colMap['name']] || '';
-          const brokerEmail = parts[colMap['hauler contact'] ?? colMap['email']] || '';
-          if (!haulerName || !brokerEmail) continue;
-          incomingBrokers.push({ haulerName, brokerEmail, notes: parts.filter((_, idx) => idx !== (colMap['hauler name'] ?? colMap['name']) && idx !== (colMap['hauler contact'] ?? colMap['email'])).join(' | ') });
+          
+          const haulerName = parts[colMap['name']] || '';
+          const brokerEmail = parts[colMap['email']] || '';
+          
+          if (!haulerName && !brokerEmail) continue;
+          
+          const states = colMap['states'] !== undefined ? parts[colMap['states']]?.split(',').map(s => s.trim().toUpperCase()).filter(s => s.length > 0) : [];
+          const notes = colMap['notes'] !== undefined ? parts[colMap['notes']] : parts.filter((_, idx) => idx !== colMap['name'] && idx !== colMap['email']).join(' | ');
+
+          incomingBrokers.push({ 
+            haulerName: haulerName || 'Imported Partner', 
+            brokerEmail: brokerEmail || '', 
+            states: states || [],
+            notes: notes || ''
+          });
         }
+
         if (incomingBrokers.length > 0) {
           setBrokerList(prev => {
             const existing = new Set(prev.map(b => b.brokerEmail.toLowerCase()));
-            return [...prev, ...incomingBrokers.filter(b => !existing.has(b.brokerEmail.toLowerCase()))];
+            return [...prev, ...incomingBrokers.filter(b => !b.brokerEmail || !existing.has(b.brokerEmail.toLowerCase()))];
           });
-          setImportFeedback(`Imported ${incomingBrokers.length} new contacts.`);
+          setImportFeedback(`Imported ${incomingBrokers.length} contacts.`);
         }
-      } catch (err) { setImportFeedback("Error parsing CSV."); } finally {
+      } catch (err) { 
+        console.error("CSV Import Error:", err);
+        setImportFeedback("Error parsing CSV."); 
+      } finally {
         if (fileInputRef.current) fileInputRef.current.value = "";
         setTimeout(() => setImportFeedback(null), 3000);
       }
@@ -1615,6 +1658,7 @@ const App: React.FC = () => {
           description: `Sequence: ${sequence.name}. Step ${nextStepIndex + 1} triggered after ${nextStep.delayDays} days.`,
           dueDate: now.toISOString().split('T')[0],
           status: TaskStatus.PENDING,
+          priority: TaskPriority.HIGH,
           createdAt: now.toISOString()
         };
         setTasks(prev => [newTask, ...prev]);
@@ -2731,7 +2775,7 @@ const App: React.FC = () => {
       {isManagingTasks && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/80 backdrop-blur-md transition-all" role="dialog" aria-modal="true" aria-labelledby="tasks-title">
           <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl w-full max-w-4xl h-[85vh] overflow-hidden border border-white/20 flex flex-col">
-            <div className="bg-gray-50 dark:bg-gray-900/50 px-8 py-6 border-b border-gray-100 dark:border-gray-700 flex flex-col gap-4">
+            <div className="bg-gray-50 dark:bg-gray-900/50 px-8 py-6 border-b border-gray-100 dark:border-gray-700 flex flex-col gap-6">
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-4">
                   <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg"><CheckBadgeIcon className="w-7 h-7" aria-hidden="true" /></div>
@@ -2752,56 +2796,131 @@ const App: React.FC = () => {
                   </button>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                {(['ALL', 'PENDING', 'COMPLETED', 'OVERDUE'] as const).map((f) => {
-                  const isActive = taskFilter === f;
-                  const count = tasks.filter(t => {
-                    if (f === 'ALL') return true;
-                    if (f === 'PENDING') return t.status === TaskStatus.PENDING;
-                    if (f === 'COMPLETED') return t.status === TaskStatus.COMPLETED;
-                    if (f === 'OVERDUE') return t.status === TaskStatus.PENDING && new Date(t.dueDate) < new Date();
-                    return true;
-                  }).length;
-                  return (
-                    <button
-                      key={f}
-                      onClick={() => setTaskFilter(f)}
-                      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border ${
-                        isActive 
-                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' 
-                          : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      {f} ({count})
-                    </button>
-                  );
-                })}
+              
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black uppercase tracking-widest text-gray-400">Status</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(['ALL', 'PENDING', 'COMPLETED', 'OVERDUE'] as const).map((f) => (
+                      <button
+                        key={f}
+                        onClick={() => setTaskFilter(f)}
+                        className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all border ${
+                          taskFilter === f 
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' 
+                            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        {f}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black uppercase tracking-widest text-gray-400">Priority</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(['ALL', ...Object.values(TaskPriority)] as const).map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => setTaskPriorityFilter(p)}
+                        className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all border ${
+                          taskPriorityFilter === p 
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' 
+                            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black uppercase tracking-widest text-gray-400">Hauler</label>
+                  <select 
+                    value={taskHaulerFilter}
+                    onChange={(e) => setTaskHaulerFilter(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-lg text-[10px] font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 outline-none focus:border-indigo-500"
+                  >
+                    <option value="ALL">All Partners</option>
+                    {Array.from(new Set(tasks.map(t => t.haulerName).filter(Boolean))).map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[9px] font-black uppercase tracking-widest text-gray-400">Created Date Range</label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="date" 
+                      value={taskDateRange.start}
+                      onChange={(e) => setTaskDateRange(prev => ({ ...prev, start: e.target.value }))}
+                      className="w-full px-2 py-1 rounded-lg text-[9px] font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 outline-none"
+                    />
+                    <input 
+                      type="date" 
+                      value={taskDateRange.end}
+                      onChange={(e) => setTaskDateRange(prev => ({ ...prev, end: e.target.value }))}
+                      className="w-full px-2 py-1 rounded-lg text-[9px] font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 outline-none"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-8">
               {tasks.filter(t => {
-                if (taskFilter === 'ALL') return true;
-                if (taskFilter === 'PENDING') return t.status === TaskStatus.PENDING;
-                if (taskFilter === 'COMPLETED') return t.status === TaskStatus.COMPLETED;
-                if (taskFilter === 'OVERDUE') return t.status === TaskStatus.PENDING && new Date(t.dueDate) < new Date();
-                return true;
+                const matchesStatus = taskFilter === 'ALL' || 
+                                     (taskFilter === 'PENDING' && t.status === TaskStatus.PENDING) ||
+                                     (taskFilter === 'COMPLETED' && t.status === TaskStatus.COMPLETED) ||
+                                     (taskFilter === 'OVERDUE' && t.status === TaskStatus.PENDING && new Date(t.dueDate) < new Date());
+                
+                const matchesPriority = taskPriorityFilter === 'ALL' || t.priority === taskPriorityFilter;
+                const matchesHauler = taskHaulerFilter === 'ALL' || t.haulerName === taskHaulerFilter;
+                
+                const taskDate = new Date(t.createdAt);
+                const matchesDateStart = !taskDateRange.start || taskDate >= new Date(taskDateRange.start);
+                const matchesDateEnd = !taskDateRange.end || taskDate <= new Date(taskDateRange.end + 'T23:59:59');
+                
+                return matchesStatus && matchesPriority && matchesHauler && matchesDateStart && matchesDateEnd;
               }).length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-gray-400">
                   <CheckCircleIcon className="w-16 h-16 mb-4 opacity-20" />
-                  <p className="text-sm font-bold uppercase tracking-widest">No tasks found for this filter</p>
+                  <p className="text-sm font-bold uppercase tracking-widest">No tasks found for these filters</p>
+                  <button 
+                    onClick={() => {
+                      setTaskFilter('ALL');
+                      setTaskPriorityFilter('ALL');
+                      setTaskHaulerFilter('ALL');
+                      setTaskDateRange({ start: '', end: '' });
+                    }}
+                    className="mt-4 text-xs text-indigo-600 font-black uppercase tracking-widest hover:underline"
+                  >
+                    Clear All Filters
+                  </button>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-4">
                   {tasks
                     .filter(t => {
-                      if (taskFilter === 'ALL') return true;
-                      if (taskFilter === 'PENDING') return t.status === TaskStatus.PENDING;
-                      if (taskFilter === 'COMPLETED') return t.status === TaskStatus.COMPLETED;
-                      if (taskFilter === 'OVERDUE') return t.status === TaskStatus.PENDING && new Date(t.dueDate) < new Date();
-                      return true;
+                      const matchesStatus = taskFilter === 'ALL' || 
+                                           (taskFilter === 'PENDING' && t.status === TaskStatus.PENDING) ||
+                                           (taskFilter === 'COMPLETED' && t.status === TaskStatus.COMPLETED) ||
+                                           (taskFilter === 'OVERDUE' && t.status === TaskStatus.PENDING && new Date(t.dueDate) < new Date());
+                      
+                      const matchesPriority = taskPriorityFilter === 'ALL' || t.priority === taskPriorityFilter;
+                      const matchesHauler = taskHaulerFilter === 'ALL' || t.haulerName === taskHaulerFilter;
+                      
+                      const taskDate = new Date(t.createdAt);
+                      const matchesDateStart = !taskDateRange.start || taskDate >= new Date(taskDateRange.start);
+                      const matchesDateEnd = !taskDateRange.end || taskDate <= new Date(taskDateRange.end + 'T23:59:59');
+                      
+                      return matchesStatus && matchesPriority && matchesHauler && matchesDateStart && matchesDateEnd;
                     })
                     .map(task => {
                       const isOverdue = task.status === TaskStatus.PENDING && new Date(task.dueDate) < new Date();
+                      const priorityColor = task.priority === TaskPriority.HIGH ? 'text-red-600 bg-red-50' : task.priority === TaskPriority.MEDIUM ? 'text-amber-600 bg-amber-50' : 'text-blue-600 bg-blue-50';
                       return (
                         <div key={task.id} className={`p-6 rounded-2xl border transition-all flex items-center justify-between gap-6 ${task.status === TaskStatus.COMPLETED ? 'bg-gray-50 dark:bg-gray-900/30 border-gray-100 dark:border-gray-800 opacity-60' : isOverdue ? 'bg-red-50/30 dark:bg-red-900/10 border-red-100 dark:border-red-900/30' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 hover:border-indigo-400 shadow-sm'}`}>
                           <div className="flex-1 min-w-0">
@@ -2809,6 +2928,9 @@ const App: React.FC = () => {
                               <h4 className={`text-base font-black tracking-tight truncate ${task.status === TaskStatus.COMPLETED ? 'line-through' : ''}`}>{task.title}</h4>
                               <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider ${task.status === TaskStatus.PENDING ? (isOverdue ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700') : 'bg-green-100 text-green-700'}`}>
                                 {isOverdue ? 'OVERDUE' : task.status}
+                              </span>
+                              <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider ${priorityColor}`}>
+                                {task.priority}
                               </span>
                             </div>
                             <p className="text-xs text-indigo-600 dark:text-indigo-400 font-bold mb-2">
@@ -2894,6 +3016,25 @@ const App: React.FC = () => {
               <div>
                 <label htmlFor="task-due" className="block text-xs font-bold uppercase text-gray-600 dark:text-gray-400 mb-2 tracking-widest">Due Date</label>
                 <input id="task-due" type="date" value={newTaskData.dueDate} onChange={e => setNewTaskData({...newTaskData, dueDate: e.target.value})} className="w-full px-5 py-3 rounded-xl border-2 border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-bold outline-none focus:border-indigo-500 transition-all shadow-sm" required />
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase text-gray-600 dark:text-gray-400 mb-2 tracking-widest">Priority</label>
+                <div className="flex gap-2">
+                  {Object.values(TaskPriority).map(p => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setNewTaskData({...newTaskData, priority: p})}
+                      className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 transition-all ${
+                        newTaskData.priority === p 
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' 
+                          : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border-gray-100 dark:border-gray-700 hover:border-indigo-400'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div>
                 <label htmlFor="task-desc" className="block text-xs font-bold uppercase text-gray-600 dark:text-gray-400 mb-2 tracking-widest">Notes / Description</label>

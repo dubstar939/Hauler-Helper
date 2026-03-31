@@ -1,4 +1,24 @@
 
+export const SENDER_EMAIL = "chrisw@wasteexperts.com";
+export const DB_STORAGE_KEY = 'hauler_hunter_db_v1';
+export const TEMPLATE_STORAGE_KEY = 'hauler_hunter_templates_v1';
+export const SEARCH_STORAGE_KEY = 'hauler_hunter_saved_searches_v1';
+export const TASK_STORAGE_KEY = 'hauler_hunter_tasks_v1';
+export const THEME_STORAGE_KEY = 'hauler_hunter_theme_v1';
+export const AUTOMATION_STORAGE_KEY = 'hauler_hunter_automation_v1';
+
+export const PLACEHOLDERS = [
+  { key: '{haulerName}', label: 'Hauler Name' },
+  { key: '{address}', label: 'Address' },
+  { key: '{location}', label: 'City/State' },
+  { key: '{clientRef}', label: 'Client Ref' },
+  { key: '{accountInfo}', label: 'Account Info' },
+  { key: '{signature}', label: 'Signature' },
+  { key: '{date}', label: 'Current Date' },
+  { key: '{overageAmount}', label: 'Overage Details' },
+  { key: '{contaminationType}', label: 'Contamination Type' },
+];
+
 export const EMAIL_SIGNATURE = `Best regards,
 
 Chris W.

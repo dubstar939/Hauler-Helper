@@ -12,6 +12,13 @@ export enum HaulerType {
 }
 
 export interface BrokerContact {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  location?: string;
+  type?: string;
+  rating?: number;
   haulerName: string;
   brokerEmail: string;
   secondaryEmail?: string;
@@ -105,6 +112,7 @@ export interface FollowUpStep {
   id: string;
   delayDays: number;
   templateId: string;
+  type?: string;
 }
 
 export interface FollowUpSequence {
@@ -120,4 +128,16 @@ export interface SearchResult {
   website?: string;
   snippet: string;
   sources?: { title: string; uri: string }[];
+}
+
+export type SortKey = 'name' | 'status' | 'type' | 'lastActionDate';
+
+export interface SortConfig {
+  key: SortKey;
+  direction: 'asc' | 'desc';
+}
+
+export interface Placeholder {
+  key: string;
+  label: string;
 }

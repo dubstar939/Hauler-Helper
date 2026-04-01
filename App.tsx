@@ -1,67 +1,71 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { supabase } from './src/supabase';
+import { motion, AnimatePresence } from 'motion/react';
+import Markdown from 'react-markdown';
 import { 
-  MagnifyingGlassIcon, 
-  ArrowPathIcon, 
-  EnvelopeIcon, 
-  CheckCircleIcon, 
-  TrashIcon, 
-  MapPinIcon, 
-  PaperClipIcon, 
-  XMarkIcon, 
-  CheckBadgeIcon, 
-  InformationCircleIcon, 
-  LinkIcon, 
-  ArrowTopRightOnSquareIcon, 
-  ArrowUpOnSquareStackIcon, 
-  ServerIcon, 
-  SunIcon, 
-  MoonIcon, 
-  SparklesIcon, 
-  CircleStackIcon, 
-  EyeIcon, 
-  PencilSquareIcon, 
-  UserIcon, 
-  ChevronUpIcon, 
-  ChevronDownIcon, 
-  BarsArrowDownIcon, 
-  PlusIcon, 
-  FunnelIcon,
-  DocumentPlusIcon,
-  CpuChipIcon,
-  TagIcon,
-  GlobeAltIcon,
-  GlobeAmericasIcon,
-  ExclamationTriangleIcon,
-  ArrowUturnLeftIcon,
-  ClipboardDocumentIcon,
-  UserGroupIcon,
-  NoSymbolIcon,
-  PaperAirplaneIcon,
-  XCircleIcon,
-  DocumentDuplicateIcon,
-  DocumentTextIcon,
-  DocumentIcon,
-  UserPlusIcon,
-  PlusCircleIcon,
-  ArrowRightIcon,
-  CircleStackIcon as CircleStackIconSolid,
-  CheckIcon,
-  PencilIcon,
-  BookmarkIcon,
-  ClockIcon,
-  CalendarIcon,
-  KeyIcon,
-  ListBulletIcon,
-  CommandLineIcon,
-  ClipboardIcon
-} from '@heroicons/react/24/outline';
+  Search, 
+  RefreshCw, 
+  Mail, 
+  CheckCircle2, 
+  Trash2, 
+  MapPin, 
+  Paperclip, 
+  X, 
+  BadgeCheck, 
+  Info, 
+  Link as LinkIcon, 
+  ExternalLink, 
+  UploadCloud, 
+  Database, 
+  Sun, 
+  Moon, 
+  Sparkles, 
+  Layers, 
+  Eye, 
+  Edit3, 
+  User, 
+  ChevronUp, 
+  ChevronDown, 
+  Plus, 
+  Filter,
+  FilePlus,
+  Cpu,
+  Tag,
+  Globe,
+  AlertTriangle,
+  RotateCcw,
+  ClipboardCheck,
+  Users,
+  Ban,
+  Send,
+  XCircle,
+  Copy,
+  FileText,
+  File,
+  UserPlus,
+  PlusCircle,
+  ArrowRight,
+  Check,
+  Pencil,
+  Bookmark,
+  Clock,
+  Calendar,
+  Key,
+  List,
+  Terminal,
+  Clipboard,
+  ShieldCheck,
+  Truck,
+  Box,
+  Factory,
+  Zap
+} from 'lucide-react';
 import L from 'leaflet';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
-import { Hauler, HaulerStatus, HaulerType, BrokerContact, HaulerAttachment, SearchResult, EmailTemplate, SavedSearch, Task, TaskStatus } from './types';
+import { Hauler, HaulerStatus, HaulerType, BrokerContact, HaulerAttachment, SearchResult, EmailTemplate, SavedSearch, Task, TaskStatus, IntelligenceResult } from './types';
 import { MOCK_BROKERS, BID_TEMPLATE_CURRENT, BID_TEMPLATE_NEW, EMAIL_SIGNATURE } from './constants';
+import { getHaulerIntelligence } from './src/services/geminiService';
 
 const SENDER_EMAIL = "chrisw@wasteexperts.com";
 const DB_STORAGE_KEY = 'hauler_hunter_db_v1';
@@ -241,6 +245,54 @@ const App: React.FC = () => {
     states: []
   });
 
+  const [intelligenceResult, setIntelligenceResult] = useState<IntelligenceResult | null>(null);
+  const [isIntelligenceLoading, setIsIntelligenceLoading] = useState(false);
+
+  const handleIntelligenceSearch = async () => {
+    const searchAddress = facilityAddress || location;
+    if (!searchAddress) {
+      setImportFeedback("Please provide an address or location.");
+      setTimeout(() => setImportFeedback(null), 3000);
+      return;
+    }
+
+    setIsIntelligenceLoading(true);
+    setIsSearching(true);
+    setSearchStatus("Hauler Hunter Intelligence Engine: Analyzing Territory Patterns...");
+    setSearchPhase(1);
+
+    if (facilityAddress) {
+      geocodeLocation(facilityAddress).then(coords => {
+        if (coords) setFacilityCoords(coords);
+      });
+    }
+
+    try {
+      const result = await getHaulerIntelligence(searchAddress);
+      setIntelligenceResult(result);
+      
+      // Also add the primary hauler to the session results if possible
+      if (result.primaryHauler) {
+        const primaryHaulerResult: SearchResult = {
+          name: result.primaryHauler.name,
+          email: '', // Gemini might not provide email directly without more searching
+          snippet: result.primaryHauler.reasoning
+        };
+        processResults([primaryHaulerResult], 'Search');
+      }
+
+      setImportFeedback("Intelligence Engine analysis complete.");
+    } catch (error) {
+      console.error("Intelligence search failed:", error);
+      setImportFeedback("Intelligence Engine failed to analyze this location.");
+    } finally {
+      setIsIntelligenceLoading(false);
+      setIsSearching(false);
+      setSearchStatus('');
+      setSearchPhase(0);
+      setTimeout(() => setImportFeedback(null), 3000);
+    }
+  };
   const [isDrafting, setIsDrafting] = useState(false);
   const [isManagingDb, setIsManagingDb] = useState(false);
   const [isManagingTemplates, setIsManagingTemplates] = useState(false);
@@ -275,6 +327,7 @@ const App: React.FC = () => {
 
   const [dbSearchQuery, setDbSearchQuery] = useState('');
   const [isOutlookConnected, setIsOutlookConnected] = useState(true); 
+  const [facilityCoords, setFacilityCoords] = useState<[number, number] | null>(null);
   const [importFeedback, setImportFeedback] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'name', direction: 'asc' });
   const [sourceFilter, setSourceFilter] = useState<'all' | 'Search' | 'Broker List'>('all');
@@ -447,71 +500,19 @@ const App: React.FC = () => {
     setUpcomingTasks(upcoming);
   }, [tasks]);
 
-  // Supabase Persistence Logic
-  const syncToSupabase = async () => {
-    if (!(import.meta as any).env.VITE_SUPABASE_URL || !(import.meta as any).env.VITE_SUPABASE_ANON_KEY) return;
-
-    try {
-      // For now, we'll use a single 'app_data' table to store everything as a blob 
-      // since we don't have a full auth system yet. This ensures the user's data is saved.
-      const { error } = await supabase
-        .from('app_data')
-        .upsert({ 
-          id: 'global_state', 
-          data: {
-            brokerList,
-            templates,
-            savedSearches,
-            tasks
-          },
-          updated_at: new Date().toISOString()
-        });
-      
-      if (error) throw error;
-      console.log('Synced to Supabase successfully');
-    } catch (e) {
-      console.error('Supabase Sync Error:', e);
-    }
-  };
-
-  // Auto-sync on changes (debounced or just on state change for now)
+  // Initial load from local storage
   useEffect(() => {
-    const timer = setTimeout(() => {
-      syncToSupabase();
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [brokerList, templates, savedSearches, tasks]);
-
-  // Initial load from Supabase
-  useEffect(() => {
-    const loadFromSupabase = async () => {
-      if (!(import.meta as any).env.VITE_SUPABASE_URL || !(import.meta as any).env.VITE_SUPABASE_ANON_KEY) return;
-
-      try {
-        const { data, error } = await supabase
-          .from('app_data')
-          .select('data')
-          .eq('id', 'global_state')
-          .single();
-
-        if (error && error.code !== 'PGRST116') throw error; // PGRST116 is "no rows returned"
-
-        if (data?.data) {
-          const remote = data.data;
-          // Only update if remote has data
-          if (remote.brokerList) setBrokerList(remote.brokerList);
-          if (remote.templates) setTemplates(remote.templates);
-          if (remote.savedSearches) setSavedSearches(remote.savedSearches);
-          if (remote.tasks) setTasks(remote.tasks);
-          setImportFeedback('Data synced from Supabase');
-          setTimeout(() => setImportFeedback(null), 3000);
-        }
-      } catch (e) {
-        console.error('Supabase Load Error:', e);
-      }
-    };
-
-    loadFromSupabase();
+    const savedBrokers = localStorage.getItem(DB_STORAGE_KEY);
+    if (savedBrokers) setBrokerList(JSON.parse(savedBrokers));
+    
+    const savedTemplates = localStorage.getItem(TEMPLATE_STORAGE_KEY);
+    if (savedTemplates) setTemplates(JSON.parse(savedTemplates));
+    
+    const savedSearches = localStorage.getItem(SEARCH_STORAGE_KEY);
+    if (savedSearches) setSavedSearches(JSON.parse(savedSearches));
+    
+    const savedTasks = localStorage.getItem(TASK_STORAGE_KEY);
+    if (savedTasks) setTasks(JSON.parse(savedTasks));
   }, []);
 
   useEffect(() => {
@@ -581,6 +582,28 @@ const App: React.FC = () => {
 
       const bounds = L.latLngBounds([]);
       let hasPoints = false;
+
+      if (facilityCoords) {
+        hasPoints = true;
+        const marker = L.marker(facilityCoords, {
+          icon: L.divIcon({
+            className: 'facility-marker',
+            html: `<div class="bg-indigo-600 w-10 h-10 rounded-full border-4 border-white shadow-2xl flex items-center justify-center text-white ring-4 ring-indigo-600/20"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg></div>`,
+            iconSize: [40, 40],
+            iconAnchor: [20, 40]
+          })
+        }).addTo(mapInstanceRef.current!);
+        
+        marker.bindPopup(`
+          <div class="p-2">
+            <h4 class="font-black text-sm">Target Facility</h4>
+            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">${facilityAddress || location}</p>
+          </div>
+        `);
+        
+        markersRef.current.push(marker);
+        bounds.extend(facilityCoords);
+      }
 
       sortedHaulers.forEach(h => {
         if (h.coordinates) {
@@ -1224,6 +1247,12 @@ const App: React.FC = () => {
   const handleDeepSearch = () => {
     if (!location) return;
     setIsSearching(true);
+    if (facilityAddress) {
+      geocodeLocation(facilityAddress).then(coords => {
+        if (coords) setFacilityCoords(coords);
+      });
+    }
+    
     setSearchStatus("Performing Deep Registry Scan...");
     setSearchPhase(1);
     const searchState = extractState(location);
@@ -1297,6 +1326,12 @@ const App: React.FC = () => {
 
   const handleUSWideSearch = () => {
     setIsSearching(true);
+    if (facilityAddress) {
+      geocodeLocation(facilityAddress).then(coords => {
+        if (coords) setFacilityCoords(coords);
+      });
+    }
+
     setSearchStatus("Scanning Nationwide Network...");
     setSearchPhase(1);
     const searchState = extractState(location);
@@ -1453,7 +1488,7 @@ const App: React.FC = () => {
       {importFeedback && (
         <div className="fixed top-20 right-8 z-50 animate-in slide-in-from-right duration-300 pointer-events-none">
           <div className="bg-gray-900 dark:bg-gray-800 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 border border-gray-700">
-            <CheckCircleIcon className="w-6 h-6 text-green-400" aria-hidden="true" />
+            <CheckCircle2 className="w-6 h-6 text-green-400" aria-hidden="true" />
             <span className="text-sm font-bold">{importFeedback}</span>
           </div>
         </div>
@@ -1463,12 +1498,12 @@ const App: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center gap-3">
-              <div className="bg-green-600 p-2 rounded-lg" aria-hidden="true"><TrashIcon className="w-6 h-6 text-white" /></div>
+              <div className="bg-green-600 p-2 rounded-lg" aria-hidden="true"><Truck className="w-6 h-6 text-white" /></div>
               <div>
                 <h1 className="text-xl font-bold tracking-tight">Hauler Hunter</h1>
                 <div className="flex items-center gap-1.5 text-[10px] text-gray-600 dark:text-gray-400 font-bold uppercase tracking-wider">
                   <span className={`w-1.5 h-1.5 rounded-full ${isOutlookConnected ? 'bg-green-500' : 'bg-red-500'} animate-pulse`} aria-hidden="true"></span>
-                  Account: {SENDER_EMAIL}
+                  Intelligence Engine Active
                 </div>
               </div>
             </div>
@@ -1478,13 +1513,13 @@ const App: React.FC = () => {
                 className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 focus-visible:ring-2 focus-visible:ring-green-500 outline-none"
                 aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
               >
-                {isDarkMode ? <SunIcon className="w-5 h-5" /> : <MoonIcon className="w-5 h-5" />}
+                {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </button>
               <button 
                 onClick={() => setIsManagingTasks(true)} 
                 className="relative flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-md text-indigo-700 dark:text-indigo-400 text-[10px] font-black uppercase hover:bg-indigo-100 transition shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-500 outline-none"
               >
-                <CheckBadgeIcon className="w-4 h-4" aria-hidden="true" /> Tasks ({tasks.filter(t => t.status === TaskStatus.PENDING).length})
+                <BadgeCheck className="w-4 h-4" aria-hidden="true" /> Tasks ({tasks.filter(t => t.status === TaskStatus.PENDING).length})
                 {upcomingTasks.length > 0 && (
                   <span className="absolute -top-1 -right-1 flex h-3 w-3">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -1496,22 +1531,22 @@ const App: React.FC = () => {
                 onClick={() => setIsManagingTemplates(true)} 
                 className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-md text-amber-700 dark:text-amber-400 text-[10px] font-black uppercase hover:bg-amber-100 transition shadow-sm focus-visible:ring-2 focus-visible:ring-amber-500 outline-none"
               >
-                <DocumentTextIcon className="w-4 h-4" aria-hidden="true" /> Templates
+                <FileText className="w-4 h-4" aria-hidden="true" /> Templates
               </button>
               <button 
                 onClick={() => setIsAddingHauler(true)} 
                 className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-md text-blue-700 dark:text-blue-400 text-[10px] font-black uppercase hover:bg-blue-100 transition shadow-sm focus-visible:ring-2 focus-visible:ring-blue-500 outline-none"
               >
-                <UserPlusIcon className="w-4 h-4" aria-hidden="true" /> Add New
+                <UserPlus className="w-4 h-4" aria-hidden="true" /> Add New
               </button>
               <button 
                 onClick={() => setIsManagingDb(true)} 
                 className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-md text-gray-700 dark:text-gray-300 text-[10px] font-black uppercase border border-gray-100 dark:border-gray-600 hover:bg-gray-100 transition focus-visible:ring-2 focus-visible:ring-gray-400 outline-none"
               >
-                <ServerIcon className="w-4 h-4 text-green-600" aria-hidden="true" /> {brokerList.length} Records
+                <Database className="w-4 h-4 text-green-600" aria-hidden="true" /> {brokerList.length} Records
               </button>
               <label className="cursor-pointer bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-amber-800 rounded-md py-1.5 px-3 text-sm font-bold text-green-700 hover:bg-green-100 transition shadow-sm flex items-center gap-2 focus-within:ring-2 focus-within:ring-green-500">
-                <ArrowUpOnSquareStackIcon className="w-4 h-4" aria-hidden="true" /> Import CSV
+                <UploadCloud className="w-4 h-4" aria-hidden="true" /> Import CSV
                 <input type="file" ref={fileInputRef} className="sr-only" accept=".csv,.txt" onChange={handleBrokerUpload} aria-label="Upload broker CSV" />
               </label>
             </div>
@@ -1522,14 +1557,14 @@ const App: React.FC = () => {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" id="main-content">
         <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 mb-8 relative">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-lg font-bold flex items-center gap-2"><MapPinIcon className="w-5 h-5 text-green-600" aria-hidden="true" /> Identify Partners</h2>
+            <h2 className="text-lg font-bold flex items-center gap-2"><MapPin className="w-5 h-5 text-green-600" aria-hidden="true" /> Identify Partners</h2>
             <div className="flex items-center gap-4">
               <div className="relative" ref={savedSearchesRef}>
                 <button 
                   onClick={() => setShowSavedSearches(!showSavedSearches)}
                   className="text-[10px] font-black uppercase text-gray-500 hover:text-indigo-600 flex items-center gap-1 transition-colors outline-none focus-visible:underline"
                 >
-                  <ClockIcon className="w-3 h-3" /> History
+                  <Clock className="w-3 h-3" /> History
                 </button>
                 {showSavedSearches && (
                   <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 z-40 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
@@ -1546,7 +1581,7 @@ const App: React.FC = () => {
                                 <div className="text-[9px] text-gray-500 mt-1">{s.timestamp}</div>
                               </div>
                               <button onClick={(e) => handleDeleteSavedSearch(s.id, e)} className="p-1 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
-                                <TrashIcon className="w-3.5 h-3.5" />
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           </li>
@@ -1560,7 +1595,7 @@ const App: React.FC = () => {
                 onClick={handleSaveSearch}
                 className="text-[10px] font-black uppercase text-gray-500 hover:text-green-600 flex items-center gap-1 transition-colors outline-none focus-visible:underline"
               >
-                <BookmarkIcon className="w-3 h-3" /> Save
+                <Bookmark className="w-3 h-3" /> Save
               </button>
               <button 
                 type="button" 
@@ -1599,22 +1634,16 @@ const App: React.FC = () => {
             </div>
             <div className="md:col-span-5 flex items-end gap-2">
               <button 
+                onClick={handleIntelligenceSearch} disabled={isSearching} 
+                className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black py-3 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition disabled:opacity-50 flex items-center justify-center gap-1.5 uppercase text-[11px] shadow-lg focus-visible:ring-2 focus-visible:ring-indigo-400 outline-none"
+              >
+                {isSearching && isIntelligenceLoading ? <RefreshCw className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Zap className="w-4 h-4" aria-hidden="true" />} Intelligence Engine
+              </button>
+              <button 
                 onClick={handleLocalSearch} disabled={isSearching} 
                 className="flex-1 bg-green-600 text-white font-black py-3 rounded-xl hover:bg-green-700 transition disabled:opacity-50 flex items-center justify-center gap-1.5 uppercase text-[11px] shadow-md focus-visible:ring-2 focus-visible:ring-green-400 outline-none"
               >
-                {isSearching && searchPhase === 1 && !searchStatus.includes("AI") ? <ArrowPathIcon className="w-4 h-4 animate-spin" aria-hidden="true" /> : <CircleStackIcon className="w-4 h-4" aria-hidden="true" />} Search DB
-              </button>
-              <button 
-                onClick={handleDeepSearch} disabled={isSearching} 
-                className="flex-1 bg-indigo-600 text-white font-black py-3 rounded-xl hover:bg-indigo-700 transition disabled:opacity-50 flex items-center justify-center gap-1.5 uppercase text-[11px] shadow-md focus-visible:ring-2 focus-visible:ring-indigo-400 outline-none"
-              >
-                {isSearching && searchPhase > 0 ? <ArrowPathIcon className="w-4 h-4 animate-spin" aria-hidden="true" /> : <MagnifyingGlassIcon className="w-4 h-4" aria-hidden="true" />} Deep Registry Scan
-              </button>
-              <button 
-                onClick={handleUSWideSearch} disabled={isSearching} 
-                className="flex-1 bg-emerald-600 text-white font-black py-3 rounded-xl hover:bg-emerald-700 transition disabled:opacity-50 flex items-center justify-center gap-1.5 uppercase text-[11px] shadow-md focus-visible:ring-2 focus-visible:ring-emerald-400 outline-none"
-              >
-                {isSearching && searchPhase === 1 ? <ArrowPathIcon className="w-4 h-4 animate-spin" aria-hidden="true" /> : <GlobeAmericasIcon className="w-4 h-4" aria-hidden="true" />} Nationwide Network
+                {isSearching && searchPhase === 1 && !isIntelligenceLoading ? <RefreshCw className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Database className="w-4 h-4" aria-hidden="true" />} Search DB
               </button>
             </div>
           </div>
@@ -1642,7 +1671,7 @@ const App: React.FC = () => {
             <div>
               <label htmlFor="state-filter" className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase mb-1.5 tracking-wider">State (Filter)</label>
               <div className="relative">
-                <TagIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" aria-hidden="true" />
+                <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" aria-hidden="true" />
                 <input 
                   id="state-filter" type="text" value={stateFilter} onChange={(e) => setStateFilter(e.target.value)} 
                   placeholder="e.g. TX, CA, FL" 
@@ -1653,7 +1682,7 @@ const App: React.FC = () => {
             <div>
               <label htmlFor="area-filter" className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase mb-1.5 tracking-wider">Service Area (Filter)</label>
               <div className="relative">
-                <FunnelIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" aria-hidden="true" />
+                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" aria-hidden="true" />
                 <input 
                   id="area-filter" type="text" value={serviceAreaFilter} onChange={(e) => setServiceAreaFilter(e.target.value)} 
                   placeholder="Filter by area/keyword..." 
@@ -1677,7 +1706,7 @@ const App: React.FC = () => {
               <div className="relative">
                 <div className={`w-20 h-20 border-4 ${searchPhase === 5 ? 'border-amber-100 border-t-amber-600' : 'border-green-100 border-t-green-600'} rounded-full animate-spin`}></div>
                 <div className="absolute inset-0 flex items-center justify-center">
-                  {searchPhase === 5 ? <ExclamationTriangleIcon className="w-8 h-8 text-amber-500" /> : <MagnifyingGlassIcon className="w-8 h-8 text-green-600 animate-pulse" />}
+                  {searchPhase === 5 ? <AlertTriangle className="w-8 h-8 text-amber-500" /> : <Search className="w-8 h-8 text-green-600 animate-pulse" />}
                 </div>
               </div>
               <div>
@@ -1699,13 +1728,175 @@ const App: React.FC = () => {
           </section>
         )}
 
+        {intelligenceResult && !isSearching && (
+          <motion.section 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-indigo-100 dark:border-indigo-900/50 overflow-hidden mb-8"
+          >
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="bg-white/20 p-2 rounded-lg">
+                  <Zap className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-white font-black uppercase tracking-wider text-sm">Intelligence Engine Report</h2>
+                  <p className="text-indigo-100 text-[10px] font-bold uppercase tracking-widest">Verified Territory Analysis</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIntelligenceResult(null)}
+                className="text-white/70 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 space-y-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800">
+                      <div className="flex items-center gap-2 mb-2">
+                        <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                        <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Primary Hauler</span>
+                      </div>
+                      <div className="text-xl font-black text-gray-900 dark:text-white mb-1">{intelligenceResult.primaryHauler.name}</div>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${
+                          intelligenceResult.primaryHauler.confidence === 'High' ? 'bg-green-100 text-green-700' :
+                          intelligenceResult.primaryHauler.confidence === 'Medium' ? 'bg-amber-100 text-amber-700' :
+                          'bg-red-100 text-red-700'
+                        }`}>
+                          {intelligenceResult.primaryHauler.confidence} Confidence
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-xl border border-purple-100 dark:border-purple-800">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Layers className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                        <span className="text-[10px] font-black uppercase tracking-widest text-purple-600 dark:text-purple-400">Service Type</span>
+                      </div>
+                      <div className="text-xl font-black text-gray-900 dark:text-white mb-1 capitalize">{intelligenceResult.serviceType}</div>
+                      <div className="text-[10px] text-purple-600 dark:text-purple-400 font-bold uppercase tracking-wider">Market Structure</div>
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-50 dark:bg-gray-900/30 p-5 rounded-xl border border-gray-100 dark:border-gray-800">
+                    <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 mb-4 flex items-center gap-2">
+                      <Terminal className="w-4 h-4" /> Detailed Reasoning
+                    </h3>
+                    <div className="prose prose-sm dark:prose-invert max-w-none">
+                      <Markdown>{intelligenceResult.primaryHauler.reasoning}</Markdown>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 flex items-center gap-2">
+                        <Box className="w-4 h-4" /> Container Setup
+                      </h3>
+                      <div className="space-y-2">
+                        <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed font-medium">
+                          {intelligenceResult.likelyContainerSetup.description}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {intelligenceResult.likelyContainerSetup.commonSizes.map(size => (
+                            <span key={size} className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-[10px] font-bold text-gray-600 dark:text-gray-400 uppercase">{size}</span>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {intelligenceResult.likelyContainerSetup.commonFrequencies.map(freq => (
+                            <span key={freq} className="px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 rounded text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase">{freq}</span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 flex items-center gap-2">
+                        <Globe className="w-4 h-4" /> Territory Logic
+                      </h3>
+                      <div className="space-y-2">
+                        <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                          {intelligenceResult.territoryLogic.detailedExplanation}
+                        </p>
+                        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800">
+                          <p className="text-[11px] text-blue-800 dark:text-blue-300 font-medium">
+                            <span className="font-black uppercase mr-1">Context:</span> {intelligenceResult.territoryLogic.municipalContext}
+                          </p>
+                          {intelligenceResult.territoryLogic.franchiseDetails && (
+                            <p className="text-[11px] text-blue-800 dark:text-blue-300 mt-1">
+                              <span className="font-black uppercase mr-1">Franchise:</span> {intelligenceResult.territoryLogic.franchiseDetails}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
+                    <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 mb-4 flex items-center gap-2">
+                      <Users className="w-4 h-4" /> Alternative Haulers
+                    </h3>
+                    <div className="space-y-4">
+                      {intelligenceResult.secondaryHaulers.map((sh, idx) => (
+                        <div key={idx} className="group">
+                          <div className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-indigo-600 transition-colors">{sh.name}</div>
+                          <p className="text-[11px] text-gray-500 leading-relaxed mt-1">{sh.reasoning}</p>
+                          {sh.proInsights && sh.proInsights.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {sh.proInsights.map((insight, i) => (
+                                <span key={i} className="px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-[8px] font-bold uppercase rounded border border-amber-100 dark:border-amber-800">{insight}</span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bg-amber-50 dark:bg-amber-900/20 p-5 rounded-xl border border-amber-100 dark:border-amber-800">
+                    <h3 className="text-xs font-black uppercase tracking-widest text-amber-700 dark:text-amber-400 mb-3 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4" /> Pro Insights
+                    </h3>
+                    <ul className="space-y-2">
+                      {intelligenceResult.primaryHauler.proInsights.map((insight, i) => (
+                        <li key={i} className="text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed flex gap-2">
+                          <span className="text-amber-500">•</span>
+                          {insight}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <button 
+                    onClick={() => {
+                      const blob = new Blob([intelligenceResult.fullMarkdown], { type: 'text/markdown' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `Hauler_Hunter_Report_${location || 'Address'}.md`;
+                      a.click();
+                    }}
+                    className="w-full py-3 bg-gray-900 dark:bg-gray-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black dark:hover:bg-gray-600 transition flex items-center justify-center gap-2"
+                  >
+                    <FileText className="w-4 h-4" /> Export Full Report
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.section>
+        )}
         {haulers.length > 0 && !isSearching && (
           <section className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-4 mb-2 px-1">
               <nav className="flex flex-wrap gap-2" aria-label="Source filters">
-                <SourceFilterButton label="All Identified" value="all" icon={MagnifyingGlassIcon} />
-                <SourceFilterButton label="Web Search" value="Search" icon={SparklesIcon} />
-                <SourceFilterButton label="Broker List" value="Broker List" icon={ServerIcon} />
+                <SourceFilterButton label="All Identified" value="all" icon={Search} />
+                <SourceFilterButton label="Web Search" value="Search" icon={Sparkles} />
+                <SourceFilterButton label="Broker List" value="Broker List" icon={Database} />
               </nav>
               <div className="flex items-center gap-3">
                 <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700">
@@ -1714,14 +1905,14 @@ const App: React.FC = () => {
                     className={`p-2 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white dark:bg-gray-700 shadow-sm text-green-600' : 'text-gray-400 hover:text-gray-600'}`}
                     aria-label="List View"
                   >
-                    <ListBulletIcon className="w-5 h-5" />
+                    <List className="w-5 h-5" />
                   </button>
                   <button 
                     onClick={() => setViewMode('map')}
                     className={`p-2 rounded-lg transition-all ${viewMode === 'map' ? 'bg-white dark:bg-gray-700 shadow-sm text-green-600' : 'text-gray-400 hover:text-gray-600'}`}
                     aria-label="Map View"
                   >
-                    <GlobeAltIcon className="w-5 h-5" />
+                    <Globe className="w-5 h-5" />
                   </button>
                 </div>
                 <div className="text-[10px] font-black uppercase text-gray-600 dark:text-gray-400 tracking-widest">
@@ -1737,7 +1928,7 @@ const App: React.FC = () => {
             ) : (
               sortedHaulers.length === 0 ? (
                 <div className="py-20 text-center bg-gray-50/50 dark:bg-gray-800/50 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700" role="status">
-                  <NoSymbolIcon className="w-12 h-12 text-gray-400 mx-auto mb-3" aria-hidden="true" />
+                  <Ban className="w-12 h-12 text-gray-400 mx-auto mb-3" aria-hidden="true" />
                   <h3 className="text-gray-600 dark:text-gray-400 font-bold uppercase text-xs tracking-widest">No partners match current filters</h3>
                   <button onClick={handleResetFilters} className="mt-4 text-indigo-600 dark:text-indigo-400 text-xs font-black uppercase hover:underline">Clear all filters</button>
                 </div>
@@ -1752,20 +1943,20 @@ const App: React.FC = () => {
                         onChange={toggleAllHaulers}
                       />
                       <button onClick={() => handleSort('name')} className={`flex items-center gap-1 hover:text-gray-600 transition-colors ${sortConfig.key === 'name' ? 'text-green-600' : ''}`}>
-                        Hauler Name {sortConfig.key === 'name' && (sortConfig.direction === 'asc' ? <ChevronUpIcon className="w-3 h-3" /> : <ChevronDownIcon className="w-3 h-3" />)}
+                        Hauler Name {sortConfig.key === 'name' && (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
                       </button>
                       <button onClick={() => handleSort('type')} className={`flex items-center gap-1 hover:text-gray-600 transition-colors ${sortConfig.key === 'type' ? 'text-green-600' : ''}`}>
-                        Type {sortConfig.key === 'type' && (sortConfig.direction === 'asc' ? <ChevronUpIcon className="w-3 h-3" /> : <ChevronDownIcon className="w-3 h-3" />)}
+                        Type {sortConfig.key === 'type' && (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
                       </button>
                     </div>
                     <div className="col-span-2">
                       <button onClick={() => handleSort('status')} className={`flex items-center gap-1 hover:text-gray-600 transition-colors ${sortConfig.key === 'status' ? 'text-green-600' : ''}`}>
-                        Status {sortConfig.key === 'status' && (sortConfig.direction === 'asc' ? <ChevronUpIcon className="w-3 h-3" /> : <ChevronDownIcon className="w-3 h-3" />)}
+                        Status {sortConfig.key === 'status' && (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
                       </button>
                     </div>
                     <div className="col-span-2">
                       <button onClick={() => handleSort('lastActionDate')} className={`flex items-center gap-1 hover:text-gray-600 transition-colors ${sortConfig.key === 'lastActionDate' ? 'text-green-600' : ''}`}>
-                        Last Action {sortConfig.key === 'lastActionDate' && (sortConfig.direction === 'asc' ? <ChevronUpIcon className="w-3 h-3" /> : <ChevronDownIcon className="w-3 h-3" />)}
+                        Last Action {sortConfig.key === 'lastActionDate' && (sortConfig.direction === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
                       </button>
                     </div>
                     <div className="col-span-2 text-right">Actions</div>
@@ -1791,12 +1982,12 @@ const App: React.FC = () => {
                                 </span>
                                 {h.contactSource === 'Search' && (
                                   <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 flex items-center gap-1">
-                                    <SparklesIcon className="w-2.5 h-2.5" /> Verified
+                                    <Sparkles className="w-2.5 h-2.5" /> Verified
                                   </span>
                                 )}
                                 {inDb && (
                                   <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex items-center gap-1">
-                                    <CheckBadgeIcon className="w-2.5 h-2.5" /> In Database
+                                    <BadgeCheck className="w-2.5 h-2.5" /> In Database
                                   </span>
                                 )}
                                 <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.type === HaulerType.CURRENT ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
@@ -1807,35 +1998,35 @@ const App: React.FC = () => {
                                 </span>
                                 {h.lastActionDate && (
                                   <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-gray-50 text-gray-500 dark:bg-gray-900 dark:text-gray-500 flex items-center gap-1" title="Last Action Date">
-                                    <CalendarIcon className="w-2.5 h-2.5" /> Action: {h.lastActionDate}
+                                    <Calendar className="w-2.5 h-2.5" /> Action: {h.lastActionDate}
                                   </span>
                                 )}
                                 {h.lastContacted && (
                                   <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 flex items-center gap-1" title="Last Contacted Date">
-                                    <EnvelopeIcon className="w-2.5 h-2.5" /> Contacted: {h.lastContacted}
+                                    <Mail className="w-2.5 h-2.5" /> Contacted: {h.lastContacted}
                                   </span>
                                 )}
                                 {tasks.filter(t => t.haulerId === h.id && t.status === TaskStatus.PENDING).length > 0 && (
                                   <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 flex items-center gap-1">
-                                    <ClockIcon className="w-2.5 h-2.5" /> {tasks.filter(t => t.haulerId === h.id && t.status === TaskStatus.PENDING).length} Tasks
+                                    <Clock className="w-2.5 h-2.5" /> {tasks.filter(t => t.haulerId === h.id && t.status === TaskStatus.PENDING).length} Tasks
                                   </span>
                                 )}
                               </div>
                             </div>
                             <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500 dark:text-gray-400 mt-1">
                               <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 dark:bg-gray-900 rounded-md border border-gray-100 dark:border-gray-800">
-                                <EnvelopeIcon className="w-3.5 h-3.5" />
+                                <Mail className="w-3.5 h-3.5" />
                                 <span className="font-medium truncate max-w-[150px] sm:max-w-xs">{h.email}</span>
                                 <button 
                                   onClick={() => handleCopyEmail(h.email)}
                                   className="ml-1 p-0.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
                                   title="Copy Email"
                                 >
-                                  <ClipboardIcon className="w-3 h-3" />
+                                  <ClipboardCheck className="w-3 h-3" />
                                 </button>
                               </div>
-                              {h.website && <a href={h.website} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-indigo-600 transition-colors"><GlobeAltIcon className="w-3.5 h-3.5" /> Site</a>}
-                              <div className="flex items-center gap-1"><MapPinIcon className="w-3.5 h-3.5" /> <span className="truncate max-w-[120px]">{h.location}</span></div>
+                              {h.website && <a href={h.website} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-indigo-600 transition-colors"><Globe className="w-3.5 h-3.5" /> Site</a>}
+                              <div className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> <span className="truncate max-w-[120px]">{h.location}</span></div>
                             </div>
                           </div>
                         </div>
@@ -1847,7 +2038,7 @@ const App: React.FC = () => {
                               title="Copy Full Broker Info"
                               aria-label={`Copy info for ${h.name}`}
                             >
-                              <ClipboardDocumentIcon className="w-5 h-5" aria-hidden="true" />
+                               <ClipboardCheck className="w-5 h-5" aria-hidden="true" />
                             </button>
                             {h.contactSource === 'Search' && !inDb && (
                               <button 
@@ -1856,7 +2047,7 @@ const App: React.FC = () => {
                                 title="Add to Database"
                                 aria-label={`Save ${h.name} to database`}
                               >
-                                <PlusCircleIcon className="w-5 h-5" aria-hidden="true" /> Add to DB
+                                <PlusCircle className="w-5 h-5" aria-hidden="true" /> Add to DB
                               </button>
                             )}
                           </div>
@@ -1865,20 +2056,20 @@ const App: React.FC = () => {
                             className="p-2.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 transition focus-visible:ring-2 focus-visible:ring-indigo-400 outline-none"
                             title="Create Follow-up Task"
                           >
-                            <CheckBadgeIcon className="w-5 h-5" aria-hidden="true" />
+                            <BadgeCheck className="w-5 h-5" aria-hidden="true" />
                           </button>
                           <button 
                             onClick={() => handleDeleteHauler(h)} 
                             className="p-2.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-100 transition focus-visible:ring-2 focus-visible:ring-red-400 outline-none"
                             aria-label={`Remove ${h.name} from list`}
                           >
-                            <TrashIcon className="w-5 h-5" aria-hidden="true" />
+                            <Trash2 className="w-5 h-5" aria-hidden="true" />
                           </button>
                           <button 
                             onClick={() => { setSelectedHauler(h); setIsDrafting(true); }} 
                             className="px-5 py-2.5 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-xl text-sm font-black flex items-center gap-2 hover:bg-green-100 transition shadow-sm focus-visible:ring-2 focus-visible:ring-green-400 outline-none"
                           >
-                            <PencilSquareIcon className="w-4 h-4" aria-hidden="true" /> DRAFT
+                            <Edit3 className="w-4 h-4" aria-hidden="true" /> DRAFT
                           </button>
                           <button 
                             onClick={() => initiateOutlookSend(h)} 
@@ -1901,7 +2092,7 @@ const App: React.FC = () => {
                 <div className="max-w-4xl mx-auto bg-indigo-600 dark:bg-indigo-500 text-white p-4 rounded-2xl shadow-2xl flex items-center justify-between gap-4 border border-white/20 backdrop-blur-lg">
                   <div className="flex items-center gap-4">
                     <div className="bg-white/20 p-2 rounded-xl">
-                      <UserGroupIcon className="w-6 h-6" />
+                      <Users className="w-6 h-6" />
                     </div>
                     <div>
                       <p className="text-sm font-black uppercase tracking-widest">{selectedHaulerIds.size} Partners Selected</p>
@@ -1919,7 +2110,7 @@ const App: React.FC = () => {
                       onClick={handleBulkSend}
                       className="px-6 py-2 bg-white text-indigo-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-50 transition-all shadow-lg flex items-center gap-2"
                     >
-                      <PaperAirplaneIcon className="w-4 h-4" />
+                      <Send className="w-4 h-4" />
                       Send Bulk Email
                     </button>
                   </div>
@@ -1941,15 +2132,15 @@ const App: React.FC = () => {
           <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl w-full max-w-4xl h-[85vh] overflow-hidden border border-white/20 flex flex-col">
             <div className="bg-gray-50 dark:bg-gray-900/50 px-8 py-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
               <div className="flex items-center gap-4">
-                <div className="bg-amber-600 p-3 rounded-2xl text-white shadow-lg shadow-amber-600/20"><DocumentTextIcon className="w-7 h-7" aria-hidden="true" /></div>
+                <div className="bg-amber-600 p-3 rounded-2xl text-white shadow-lg shadow-amber-600/20"><FileText className="w-7 h-7" aria-hidden="true" /></div>
                 <h3 id="templates-title" className="text-2xl font-black tracking-tight">Email Templates</h3>
               </div>
               <div className="flex items-center gap-3">
                 <button onClick={() => setEditingTemplate({ id: `t-${Date.now()}`, name: '', category: HaulerType.NEW, subject: '', content: '', attachments: [] })} className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-black uppercase hover:bg-amber-700 transition shadow-md focus-visible:ring-2 focus-visible:ring-amber-400 outline-none">
-                  <PlusIcon className="w-4 h-4" aria-hidden="true" /> New Template
+                  <Plus className="w-4 h-4" aria-hidden="true" /> New Template
                 </button>
                 <button onClick={() => setIsManagingTemplates(false)} className="text-gray-500 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-gray-400 outline-none" aria-label="Close templates">
-                  <XMarkIcon className="w-7 h-7" aria-hidden="true" />
+                  <X className="w-7 h-7" aria-hidden="true" />
                 </button>
               </div>
             </div>
@@ -1973,7 +2164,7 @@ const App: React.FC = () => {
 
                   <div className="bg-amber-50 dark:bg-amber-900/10 p-4 rounded-xl border border-amber-100 dark:border-amber-800">
                     <div className="flex items-center gap-2 mb-3 text-[10px] font-black uppercase tracking-widest text-amber-600">
-                      <KeyIcon className="w-4 h-4" /> Available Placeholders (Click to Insert)
+                      <Key className="w-4 h-4" /> Available Placeholders (Click to Insert)
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {placeholderList.map((p, idx) => (
@@ -1999,7 +2190,7 @@ const App: React.FC = () => {
                               disabled={idx === 0}
                               className="p-0.5 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded text-amber-600 disabled:opacity-20"
                             >
-                              <ChevronUpIcon className="w-3 h-3" />
+                              <ChevronUp className="w-3 h-3" />
                             </button>
                             <button 
                               type="button"
@@ -2007,7 +2198,7 @@ const App: React.FC = () => {
                               disabled={idx === placeholderList.length - 1}
                               className="p-0.5 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded text-amber-600 disabled:opacity-20"
                             >
-                              <ChevronDownIcon className="w-3 h-3" />
+                              <ChevronDown className="w-3 h-3" />
                             </button>
                           </div>
                         </div>
@@ -2049,7 +2240,7 @@ const App: React.FC = () => {
                         onClick={() => attachmentInputRef.current?.click()}
                         className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-lg text-[10px] font-black uppercase tracking-widest border border-amber-100 dark:border-amber-800 hover:bg-amber-100 transition-all"
                       >
-                        <PaperClipIcon className="w-3.5 h-3.5" /> Add Files
+                        <Paperclip className="w-3.5 h-3.5" /> Add Files
                       </button>
                       <input 
                         type="file" 
@@ -2066,7 +2257,7 @@ const App: React.FC = () => {
                     <div className="grid grid-cols-2 gap-3">
                       {editingTemplate.attachments?.map((file: HaulerAttachment, i: number) => (
                         <div key={i} className="group relative flex items-center gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl text-xs font-bold shadow-sm transition-all hover:border-amber-400 pr-10">
-                          <div className="p-2 bg-amber-100 dark:bg-amber-900/40 rounded-lg"><DocumentIcon className="w-4 h-4 text-amber-600 dark:text-amber-400" aria-hidden="true" /></div>
+                          <div className="p-2 bg-amber-100 dark:bg-amber-900/40 rounded-lg"><File className="w-4 h-4 text-amber-600 dark:text-amber-400" aria-hidden="true" /></div>
                           <div className="flex flex-col min-w-0">
                             <span className="truncate max-w-[150px] text-gray-900 dark:text-white leading-tight">{file.name}</span>
                             <span className="text-[9px] text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider">{formatFileSize(file.size)}</span>
@@ -2079,7 +2270,7 @@ const App: React.FC = () => {
                             className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all focus-visible:opacity-100 outline-none"
                             aria-label={`Remove ${file.name}`}
                           >
-                            <XMarkIcon className="w-4 h-4" aria-hidden="true" />
+                            <X className="w-4 h-4" aria-hidden="true" />
                           </button>
                         </div>
                       ))}
@@ -2103,8 +2294,8 @@ const App: React.FC = () => {
                         <div className="text-sm text-gray-500 mt-2 italic truncate max-w-xl">{t.subject}</div>
                       </div>
                       <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                        <button onClick={() => setEditingTemplate(t)} className="p-3 bg-white dark:bg-gray-800 text-gray-500 hover:text-amber-600 rounded-xl shadow-sm focus-visible:ring-2 focus-visible:ring-amber-400 outline-none" aria-label={`Edit ${t.name}`}><PencilSquareIcon className="w-5 h-5" aria-hidden="true" /></button>
-                        <button onClick={() => setTemplates(prev => prev.filter(x => x.id !== t.id))} className="p-3 bg-white dark:bg-gray-800 text-gray-500 hover:text-red-600 rounded-xl shadow-sm focus-visible:ring-2 focus-visible:ring-red-400 outline-none" aria-label={`Delete ${t.name}`}><TrashIcon className="w-5 h-5" aria-hidden="true" /></button>
+                        <button onClick={() => setEditingTemplate(t)} className="p-3 bg-white dark:bg-gray-800 text-gray-500 hover:text-amber-600 rounded-xl shadow-sm focus-visible:ring-2 focus-visible:ring-amber-400 outline-none" aria-label={`Edit ${t.name}`}><Edit3 className="w-5 h-5" aria-hidden="true" /></button>
+                        <button onClick={() => setTemplates(prev => prev.filter(x => x.id !== t.id))} className="p-3 bg-white dark:bg-gray-800 text-gray-500 hover:text-red-600 rounded-xl shadow-sm focus-visible:ring-2 focus-visible:ring-red-400 outline-none" aria-label={`Delete ${t.name}`}><Trash2 className="w-5 h-5" aria-hidden="true" /></button>
                       </div>
                     </li>
                   ))}
@@ -2121,7 +2312,7 @@ const App: React.FC = () => {
           <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl w-full max-w-4xl h-[85vh] overflow-hidden border border-white/20 flex flex-col">
             <div className="bg-gray-50 dark:bg-gray-900/50 px-8 py-6 border-b border-gray-100 dark:border-gray-700 flex flex-col md:flex-row justify-between items-center gap-6">
               <div className="flex items-center gap-4">
-                <div className="bg-green-600 p-3 rounded-2xl text-white shadow-lg"><ServerIcon className="w-7 h-7" aria-hidden="true" /></div>
+                <div className="bg-green-600 p-3 rounded-2xl text-white shadow-lg"><Database className="w-7 h-7" aria-hidden="true" /></div>
                 <div>
                   <h3 id="db-title" className="text-2xl font-black tracking-tight">Internal Database</h3>
                   <p className="text-[10px] text-gray-600 dark:text-gray-400 font-bold uppercase tracking-widest">{brokerList.length} Contacts Indexed</p>
@@ -2129,7 +2320,7 @@ const App: React.FC = () => {
               </div>
               <div className="flex-1 max-w-md w-full">
                 <div className="relative">
-                  <MagnifyingGlassIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" aria-hidden="true" />
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" aria-hidden="true" />
                   <input 
                     type="text" value={dbSearchQuery} onChange={(e) => setDbSearchQuery(e.target.value)} 
                     placeholder="Quick Search Contacts..." 
@@ -2142,7 +2333,7 @@ const App: React.FC = () => {
                 <button onClick={handleRestoreDefaults} className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 rounded-xl text-[10px] font-black uppercase hover:bg-indigo-100 focus-visible:ring-2 focus-visible:ring-indigo-400 outline-none">RESTORE</button>
                 <button onClick={handleClearDatabase} className="px-4 py-2 bg-red-600 text-white rounded-xl text-[10px] font-black uppercase hover:bg-red-700 shadow-lg focus-visible:ring-2 focus-visible:ring-red-400 outline-none">WIPE DB</button>
                 <button onClick={() => {setIsManagingDb(false); setDbSearchQuery(''); setEditingBrokerIndex(null);}} className="text-gray-500 p-2 hover:bg-gray-100 rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-gray-400 outline-none" aria-label="Close database">
-                  <XMarkIcon className="w-7 h-7" aria-hidden="true" />
+                  <X className="w-7 h-7" aria-hidden="true" />
                 </button>
               </div>
             </div>
@@ -2187,7 +2378,7 @@ const App: React.FC = () => {
                             className="opacity-0 group-hover/email:opacity-100 p-1 text-gray-400 hover:text-green-600 transition-all focus:opacity-100 outline-none"
                             aria-label="Edit broker"
                           >
-                            <PencilIcon className="w-3 h-3" />
+                            <Pencil className="w-3 h-3" />
                           </button>
                         </div>
                         {broker.states && broker.states.length > 0 && (
@@ -2208,7 +2399,7 @@ const App: React.FC = () => {
                       title="Delete from Database"
                       aria-label={`Delete ${broker.haulerName} from database`}
                     >
-                      <TrashIcon className="w-5 h-5" aria-hidden="true" />
+                      <Trash2 className="w-5 h-5" aria-hidden="true" />
                     </button>
                     <button onClick={() => composeEmailFromDb(broker)} className="px-5 py-2.5 bg-green-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-green-700 focus-visible:ring-2 focus-visible:ring-green-400 outline-none">COMPOSE</button>
                   </div>
@@ -2228,7 +2419,7 @@ const App: React.FC = () => {
           <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-6xl h-[92vh] flex flex-col overflow-hidden border border-white/10">
             <div className="px-8 py-6 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-gray-50/50 dark:bg-gray-900/50">
               <div className="flex items-center gap-4">
-                <div className="bg-blue-600 p-2.5 rounded-xl text-white shadow-lg"><EnvelopeIcon className="w-6 h-6" aria-hidden="true" /></div>
+                <div className="bg-blue-600 p-2.5 rounded-xl text-white shadow-lg"><Mail className="w-6 h-6" aria-hidden="true" /></div>
                 <div>
                   <h3 id="compose-title" className="text-xl font-black tracking-tight">Email Composer</h3>
                   <div className="flex items-center gap-2 mt-1">
@@ -2239,19 +2430,19 @@ const App: React.FC = () => {
               <div className="flex items-center gap-4">
                 <div className="relative group">
                   <button className="flex items-center gap-2 px-5 py-2.5 bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-200 dark:border-amber-800 rounded-xl text-amber-700 dark:text-amber-400 text-xs font-black uppercase tracking-wider transition-all hover:bg-amber-100 focus-visible:ring-2 focus-visible:ring-amber-400 outline-none">
-                    <DocumentDuplicateIcon className="w-5 h-5" aria-hidden="true" /> LOAD TEMPLATE
+                    <Copy className="w-5 h-5" aria-hidden="true" /> LOAD TEMPLATE
                   </button>
                   <div className="absolute right-0 top-full mt-2 hidden group-hover:block bg-white dark:bg-gray-800 border-2 border-amber-100 dark:border-amber-800 rounded-2xl shadow-2xl z-20 w-80 overflow-hidden">
                     <div className="p-3 text-[10px] font-black text-amber-600 dark:text-amber-500 uppercase tracking-widest bg-amber-50 dark:bg-amber-900/10">Compatible with {selectedHauler.type}</div>
                     {templates.filter(t => t.category === selectedHauler.type).map(t => (
                       <button key={t.id} onClick={() => applyTemplateToDraft(t)} className="w-full px-5 py-4 text-left text-xs font-bold hover:bg-amber-50 dark:hover:bg-amber-900/20 border-b last:border-0 border-gray-100 dark:border-gray-700 flex items-center justify-between focus-visible:bg-amber-50 outline-none">
-                        {t.name} <ArrowUturnLeftIcon className="w-4 h-4 text-amber-500" aria-hidden="true" />
+                        {t.name} <RotateCcw className="w-4 h-4 text-amber-500" aria-hidden="true" />
                       </button>
                     ))}
                   </div>
                 </div>
                 <button onClick={() => setIsDrafting(false)} className="p-2.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 focus-visible:ring-2 focus-visible:ring-gray-400 outline-none" aria-label="Close composer">
-                  <XMarkIcon className="w-8 h-8" aria-hidden="true" />
+                  <X className="w-8 h-8" aria-hidden="true" />
                 </button>
               </div>
             </div>
@@ -2262,7 +2453,7 @@ const App: React.FC = () => {
                 <div className="flex-1 bg-gray-50 dark:bg-gray-800 px-5 py-2.5 rounded-xl border border-gray-100 dark:border-gray-700 font-bold text-sm flex items-center justify-between shadow-inner">
                   {selectedHauler.email}
                   <button onClick={() => handleCopyEmail(selectedHauler.email)} className="text-gray-500 hover:text-blue-500 focus-visible:ring-2 focus-visible:ring-blue-400 outline-none" aria-label="Copy recipient email">
-                    <ClipboardDocumentIcon className="w-5 h-5" aria-hidden="true" />
+                    <ClipboardCheck className="w-5 h-5" aria-hidden="true" />
                   </button>
                 </div>
               </div>
@@ -2275,7 +2466,7 @@ const App: React.FC = () => {
             <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-gray-950">
               <div className="px-10 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 flex items-center gap-4">
                 <div className="text-[10px] font-black uppercase text-gray-500 flex items-center gap-1.5 border-r border-gray-200 dark:border-gray-700 pr-4">
-                  <CommandLineIcon className="w-4 h-4" /> Placeholders
+                  <Terminal className="w-4 h-4" /> Placeholders
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {PLACEHOLDERS.map((p) => (
@@ -2305,20 +2496,20 @@ const App: React.FC = () => {
               <div className="px-10 py-5 border-t border-gray-50 dark:border-gray-800 bg-gray-50/20 dark:bg-gray-900/20">
                 <div className="flex items-center justify-between mb-4">
                   <h4 className="text-[11px] font-black uppercase text-gray-600 dark:text-gray-400 tracking-widest flex items-center gap-2">
-                    <PaperClipIcon className="w-4 h-4" aria-hidden="true" /> Project Attachments ({selectedHauler.attachments.length})
+                    <Paperclip className="w-4 h-4" aria-hidden="true" /> Project Attachments ({selectedHauler.attachments.length})
                   </h4>
                   <button 
                     onClick={() => attachmentInputRef.current?.click()}
                     className="flex items-center gap-2 px-4 py-1.5 bg-white dark:bg-gray-800 border-2 border-gray-100 dark:border-gray-700 rounded-xl text-[10px] font-black uppercase text-blue-600 dark:text-blue-400 hover:border-blue-300 focus-visible:ring-2 focus-visible:ring-blue-400 outline-none"
                   >
-                    <PlusIcon className="w-4 h-4" aria-hidden="true" /> UPLOAD FILE
+                    <Plus className="w-4 h-4" aria-hidden="true" /> UPLOAD FILE
                   </button>
                   <input type="file" ref={attachmentInputRef} className="sr-only" onChange={handleAddAttachment} aria-label="Add attachment" />
                 </div>
                 <div className="flex flex-wrap gap-3">
                   {selectedHauler.attachments.map((file, i) => (
                     <div key={i} className="group relative flex items-center gap-3 px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl text-xs font-bold shadow-sm transition-all hover:border-blue-400 pr-12">
-                      <div className="p-2 bg-blue-50 dark:bg-blue-900/40 rounded-xl"><DocumentIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" aria-hidden="true" /></div>
+                      <div className="p-2 bg-blue-50 dark:bg-blue-900/40 rounded-xl"><File className="w-5 h-5 text-blue-600 dark:text-blue-400" aria-hidden="true" /></div>
                       <div className="flex flex-col min-w-0">
                         <span className="truncate max-w-[150px] text-gray-900 dark:text-white leading-tight">{file.name}</span>
                         <span className="text-[9px] text-gray-500 dark:text-gray-400 font-bold uppercase tracking-wider">{formatFileSize(file.size)}</span>
@@ -2328,7 +2519,7 @@ const App: React.FC = () => {
                         className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all focus-visible:opacity-100 outline-none"
                         aria-label={`Remove ${file.name}`}
                       >
-                        <XMarkIcon className="w-5 h-5" aria-hidden="true" />
+                        <X className="w-5 h-5" aria-hidden="true" />
                       </button>
                     </div>
                   ))}
@@ -2339,21 +2530,21 @@ const App: React.FC = () => {
             <div className="px-10 py-8 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between bg-white dark:bg-gray-900">
               <div className="flex items-center gap-3">
                 <button onClick={handleLocalRefine} disabled={isRefining} className="flex items-center gap-3 px-6 py-4 rounded-2xl border-2 border-indigo-100 dark:border-indigo-900 text-indigo-700 dark:text-indigo-400 font-black text-xs uppercase tracking-widest hover:bg-indigo-50 transition-all disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-indigo-400 outline-none">
-                  {isRefining ? <ArrowPathIcon className="w-5 h-5 animate-spin" aria-hidden="true" /> : <SparklesIcon className="w-5 h-5" aria-hidden="true" />} ENHANCE TONE
+                  {isRefining ? <RefreshCw className="w-5 h-5 animate-spin" aria-hidden="true" /> : <Sparkles className="w-5 h-5" aria-hidden="true" />} ENHANCE TONE
                 </button>
                 {!isSelectedHaulerInDb && (
                   <button 
                     onClick={() => handleAddToDatabase(selectedHauler)} 
                     className="flex items-center gap-3 px-6 py-4 rounded-2xl border-2 border-emerald-100 dark:border-emerald-900 text-emerald-700 dark:text-emerald-400 font-black text-xs uppercase tracking-widest hover:bg-emerald-50 transition-all focus-visible:ring-2 focus-visible:ring-emerald-400 outline-none"
                   >
-                    <PlusCircleIcon className="w-5 h-5" aria-hidden="true" /> ADD TO DATABASE
+                    <PlusCircle className="w-5 h-5" aria-hidden="true" /> ADD TO DATABASE
                   </button>
                 )}
               </div>
               <div className="flex items-center gap-6">
                 <button onClick={() => setIsDrafting(false)} className="px-6 py-4 font-black text-sm text-gray-500 hover:text-gray-700 tracking-widest uppercase focus-visible:underline outline-none">Discard Draft</button>
                 <button onClick={() => initiateOutlookSend(selectedHauler)} className="flex items-center gap-4 px-12 py-5 bg-blue-600 text-white rounded-2xl text-base font-black hover:bg-blue-700 shadow-2xl group transition-all focus-visible:ring-2 focus-visible:ring-blue-400 outline-none">
-                  <PaperAirplaneIcon className="w-6 h-6 -rotate-45 group-hover:translate-x-2 group-hover:-translate-y-1 transition-transform" aria-hidden="true" /> PROCESS IN OUTLOOK
+                  <Send className="w-6 h-6 -rotate-45 group-hover:translate-x-2 group-hover:-translate-y-1 transition-transform" aria-hidden="true" /> PROCESS IN OUTLOOK
                 </button>
               </div>
             </div>
@@ -2378,7 +2569,7 @@ const App: React.FC = () => {
                       }}
                     ></div>
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <PaperAirplaneIcon className="w-10 h-10 text-indigo-600 animate-pulse" />
+                      <Send className="w-10 h-10 text-indigo-600 animate-pulse" />
                     </div>
                   </div>
                   <h3 className="text-2xl font-black tracking-tight mb-2">Sending Bulk Emails</h3>
@@ -2399,11 +2590,11 @@ const App: React.FC = () => {
                         <span className="text-gray-700 dark:text-gray-300 truncate mr-4">{res.name}</span>
                         {res.status === 'success' ? (
                           <span className="text-green-600 flex items-center gap-1 shrink-0">
-                            <CheckCircleIcon className="w-4 h-4" /> Sent
+                            <CheckCircle2 className="w-4 h-4" /> Sent
                           </span>
                         ) : (
                           <span className="text-red-600 flex items-center gap-1 shrink-0">
-                            <XCircleIcon className="w-4 h-4" /> Failed
+                            <XCircle className="w-4 h-4" /> Failed
                           </span>
                         )}
                       </div>
@@ -2413,7 +2604,7 @@ const App: React.FC = () => {
               ) : (
                 <>
                   <div className="w-24 h-24 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-8 shadow-xl">
-                    <CheckBadgeIcon className="w-12 h-12" />
+                    <BadgeCheck className="w-12 h-12" />
                   </div>
                   <h3 className="text-3xl font-black tracking-tight mb-2">Bulk Send Complete</h3>
                   <div className="flex justify-center gap-8 mb-8">
@@ -2433,11 +2624,11 @@ const App: React.FC = () => {
                         <span className="text-gray-700 dark:text-gray-300 truncate mr-4">{res.name}</span>
                         {res.status === 'success' ? (
                           <span className="text-green-600 flex items-center gap-1 shrink-0">
-                            <CheckCircleIcon className="w-4 h-4" /> Success
+                            <CheckCircle2 className="w-4 h-4" /> Success
                           </span>
                         ) : (
                           <span className="text-red-600 flex items-center gap-1 shrink-0">
-                            <XCircleIcon className="w-4 h-4" /> Failed
+                            <XCircle className="w-4 h-4" /> Failed
                           </span>
                         )}
                       </div>
@@ -2467,7 +2658,7 @@ const App: React.FC = () => {
             <div className="bg-gray-50 dark:bg-gray-900/50 px-8 py-6 border-b border-gray-100 dark:border-gray-700 flex flex-col gap-4">
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-4">
-                  <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg"><CheckBadgeIcon className="w-7 h-7" aria-hidden="true" /></div>
+                  <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg"><BadgeCheck className="w-7 h-7" aria-hidden="true" /></div>
                   <div>
                     <h3 id="tasks-title" className="text-2xl font-black tracking-tight">Follow-up Tasks</h3>
                     <p className="text-[10px] text-gray-600 dark:text-gray-400 font-bold uppercase tracking-widest">{tasks.length} Total Tasks</p>
@@ -2478,10 +2669,10 @@ const App: React.FC = () => {
                     onClick={() => { setSelectedHauler(null); setIsCreatingTask(true); }}
                     className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase hover:bg-indigo-700 transition shadow-md focus-visible:ring-2 focus-visible:ring-indigo-400 outline-none"
                   >
-                    <PlusIcon className="w-4 h-4" aria-hidden="true" /> New Task
+                    <Plus className="w-4 h-4" aria-hidden="true" /> New Task
                   </button>
                   <button onClick={() => setIsManagingTasks(false)} className="text-gray-500 p-2 hover:bg-gray-100 rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-gray-400 outline-none" aria-label="Close tasks">
-                    <XMarkIcon className="w-7 h-7" aria-hidden="true" />
+                    <X className="w-7 h-7" aria-hidden="true" />
                   </button>
                 </div>
               </div>
@@ -2520,7 +2711,7 @@ const App: React.FC = () => {
                 return true;
               }).length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-gray-400">
-                  <CheckCircleIcon className="w-16 h-16 mb-4 opacity-20" />
+                  <CheckCircle2 className="w-16 h-16 mb-4 opacity-20" />
                   <p className="text-sm font-bold uppercase tracking-widest">No tasks found for this filter</p>
                 </div>
               ) : (
@@ -2549,8 +2740,8 @@ const App: React.FC = () => {
                             </p>
                             {task.description && <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 line-clamp-2">{task.description}</p>}
                             <div className="flex items-center gap-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                              <span className={`flex items-center gap-1 ${isOverdue ? 'text-red-500' : ''}`}><ClockIcon className="w-3.5 h-3.5" /> Due: {task.dueDate}</span>
-                              <span className="flex items-center gap-1"><PlusIcon className="w-3.5 h-3.5" /> Created: {new Date(task.createdAt).toLocaleDateString()}</span>
+                              <span className={`flex items-center gap-1 ${isOverdue ? 'text-red-500' : ''}`}><Clock className="w-3.5 h-3.5" /> Due: {task.dueDate}</span>
+                              <span className="flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Created: {new Date(task.createdAt).toLocaleDateString()}</span>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -2560,7 +2751,7 @@ const App: React.FC = () => {
                                 className="p-3 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-xl hover:bg-green-100 transition focus-visible:ring-2 focus-visible:ring-green-400 outline-none"
                                 title="Mark as Completed"
                               >
-                                <CheckIcon className="w-5 h-5" />
+                                <Check className="w-5 h-5" />
                               </button>
                             ) : (
                               <button 
@@ -2568,7 +2759,7 @@ const App: React.FC = () => {
                                 className="p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-xl hover:bg-amber-100 transition focus-visible:ring-2 focus-visible:ring-amber-400 outline-none"
                                 title="Mark as Pending"
                               >
-                                <ArrowUturnLeftIcon className="w-5 h-5" />
+                                <RotateCcw className="w-5 h-5" />
                               </button>
                             )}
                             <button 
@@ -2576,7 +2767,7 @@ const App: React.FC = () => {
                               className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-100 transition focus-visible:ring-2 focus-visible:ring-red-400 outline-none"
                               title="Delete Task"
                             >
-                              <TrashIcon className="w-5 h-5" />
+                              <Trash2 className="w-5 h-5" />
                             </button>
                           </div>
                         </div>
@@ -2596,7 +2787,7 @@ const App: React.FC = () => {
             <div className="bg-gray-50 dark:bg-gray-900/50 px-8 py-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
               <h3 id="create-task-title" className="text-xl font-black tracking-tight">Schedule Follow-up</h3>
               <button onClick={() => setIsCreatingTask(false)} className="text-gray-500 p-2 hover:bg-gray-100 rounded-full focus-visible:ring-2 focus-visible:ring-gray-400 outline-none" aria-label="Close form">
-                <XMarkIcon className="w-7 h-7" aria-hidden="true" />
+                <X className="w-7 h-7" aria-hidden="true" />
               </button>
             </div>
             <form onSubmit={handleCreateTask} className="p-8 space-y-6">
@@ -2645,7 +2836,7 @@ const App: React.FC = () => {
              <div className="bg-gray-50 dark:bg-gray-900/50 px-8 py-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
               <h3 id="add-hauler-title" className="text-xl font-black tracking-tight">Register New Partner</h3>
               <button onClick={() => {setIsAddingHauler(false); setNewHaulerData({ haulerName: '', brokerEmail: '', secondaryEmail: '', notes: '', states: [] });}} className="text-gray-500 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full focus-visible:ring-2 focus-visible:ring-gray-400 outline-none" aria-label="Close form">
-                <XMarkIcon className="w-7 h-7" aria-hidden="true" />
+                <X className="w-7 h-7" aria-hidden="true" />
               </button>
             </div>
             <form onSubmit={handleManualAddHauler} className="p-8 space-y-6">

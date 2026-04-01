@@ -10,11 +10,15 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@google/genai": "^1.48.0",
     "@heroicons/react": "^2.2.0",
     "@supabase/supabase-js": "^2.99.2",
     "leaflet": "1.9.4",
+    "lucide-react": "^1.7.0",
+    "motion": "^12.38.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
+    "react-markdown": "^10.1.0",
     "react-quill-new": "^3.8.3"
   },
   "devDependencies": {

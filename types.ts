@@ -90,3 +90,30 @@ export interface SearchResult {
   snippet: string;
   sources?: { title: string; uri: string }[];
 }
+
+export interface IntelligenceResult {
+  primaryHauler: {
+    name: string;
+    confidence: 'High' | 'Medium' | 'Low';
+    reasoning: string;
+    proInsights: string[];
+  };
+  secondaryHaulers: {
+    name: string;
+    reasoning: string;
+    proInsights: string[];
+  }[];
+  serviceType: 'franchise' | 'open-market' | 'hybrid';
+  likelyContainerSetup: {
+    commonSizes: string[];
+    commonFrequencies: string[];
+    description: string;
+  };
+  territoryLogic: {
+    detailedExplanation: string;
+    municipalContext: string;
+    franchiseDetails?: string;
+  };
+  optionalEnhancements?: string;
+  fullMarkdown: string;
+}

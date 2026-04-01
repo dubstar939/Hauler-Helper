@@ -13,6 +13,7 @@ import {
   Copy
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
+import { useDatabase } from '../context/DatabaseContext';
 import { Hauler, EmailTemplate, HaulerAttachment, HaulerStatus } from '../../types';
 import { cn, formatFileSize, htmlToPlainText } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -32,14 +33,14 @@ const QUILL_MODULES = {
 };
 
 export const EmailDraftModal: React.FC<EmailDraftModalProps> = ({ hauler, onClose }) => {
+  const { showToast } = useGlobal();
+  const { templates } = useDatabase();
   const { 
-    templates, 
     updateHaulerField, 
     facilityAddress, 
     location, 
     clientRef, 
-    accountInfo,
-    showToast
+    accountInfo
   } = useGlobal();
   
   const quillRef = useRef<any>(null);

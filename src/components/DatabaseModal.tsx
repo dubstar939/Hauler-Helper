@@ -17,6 +17,7 @@ import {
   Building2
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
+import { useDatabase } from '../context/DatabaseContext';
 import { BrokerContact } from '../../types';
 import { Modal } from './Modal';
 import { cn } from '../lib/utils';
@@ -27,11 +28,8 @@ interface DatabaseModalProps {
 }
 
 export const DatabaseModal: React.FC<DatabaseModalProps> = ({ isOpen, onClose }) => {
-  const { 
-    brokerList, 
-    setBrokerList, 
-    showToast 
-  } = useGlobal();
+  const { showToast } = useGlobal();
+  const { brokerList, setBrokerList } = useDatabase();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);

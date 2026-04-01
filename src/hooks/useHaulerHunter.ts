@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useGlobal } from '../context/GlobalContext';
+import { useDatabase } from '../context/DatabaseContext';
 import { SearchResult, Hauler, HaulerType, HaulerStatus, BrokerContact } from '../../types';
 import { normalizeEmail, normalizeHaulerName, extractState } from '../lib/utils';
 import { BID_TEMPLATE_CURRENT, BID_TEMPLATE_NEW, EMAIL_SIGNATURE, SENDER_EMAIL } from '../../constants';
@@ -15,9 +16,10 @@ export const useHaulerHunter = () => {
     setSearchStatus,
     setSearchPhase,
     setHaulers,
-    brokerList,
     showToast
   } = useGlobal();
+
+  const { brokerList } = useDatabase();
 
   const geocodeLocation = async (locString: string): Promise<[number, number] | undefined> => {
     try {

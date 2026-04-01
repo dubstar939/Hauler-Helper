@@ -76,8 +76,6 @@ interface GlobalContextType {
   setContactSearchQuery: (query: string) => void;
   sourceFilter: 'all' | 'Search' | 'Broker List';
   setSourceFilter: (filter: 'all' | 'Search' | 'Broker List') => void;
-  templates: EmailTemplate[];
-  setTemplates: React.Dispatch<React.SetStateAction<EmailTemplate[]>>;
   selectedHaulerIds: Set<string>;
   setSelectedHaulerIds: React.Dispatch<React.SetStateAction<Set<string>>>;
   
@@ -103,7 +101,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [searchPhase, setSearchPhase] = useState(0);
   const [haulers, setHaulers] = useState<Hauler[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
-  const [importFeedback, setImportFeedback] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'name', direction: 'asc' });
   const [haulerTypeFilter, setHaulerTypeFilter] = useState<'all' | HaulerType>('all');
@@ -112,50 +109,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [contactSearchQuery, setContactSearchQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState<'all' | 'Search' | 'Broker List'>('all');
   const [selectedHaulerIds, setSelectedHaulerIds] = useState<Set<string>>(new Set());
-
-  const [brokerList, setBrokerList] = useState<BrokerContact[]>(() => {
-    let initialList = MOCK_BROKERS;
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(DB_STORAGE_KEY);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) initialList = parsed;
-        } catch (e) { console.error(e); }
-      }
-    }
-    return initialList.filter(b => b.brokerEmail && b.brokerEmail.trim() !== '');
-  });
-
-  const [templates, setTemplates] = useState<EmailTemplate[]>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(TEMPLATE_STORAGE_KEY);
-      if (saved) {
-        try { return JSON.parse(saved); } catch (e) { console.error(e); }
-      }
-    }
-    return [];
-  });
-
-  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(SEARCH_STORAGE_KEY);
-      if (saved) {
-        try { return JSON.parse(saved); } catch (e) { console.error(e); }
-      }
-    }
-    return [];
-  });
-
-  const [tasks, setTasks] = useState<Task[]>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(TASK_STORAGE_KEY);
-      if (saved) {
-        try { return JSON.parse(saved); } catch (e) { console.error(e); }
-      }
-    }
-    return [];
-  });
 
   const [themeConfig, setThemeConfig] = useState<ThemeConfig>(() => {
     if (typeof window !== 'undefined') {
@@ -242,10 +195,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const handleDeleteHauler = useCallback((hauler: Hauler) => {
     if (!window.confirm(`Remove "${hauler.name}"?`)) return;
     setHaulers(prev => prev.filter(h => h.id !== hauler.id));
-    if (hauler.contactSource === 'Broker List') {
-      const targetEmailNormalized = normalizeEmail(hauler.email);
-      setBrokerList(prev => prev.filter(b => normalizeEmail(b.brokerEmail) !== targetEmailNormalized));
-    }
     showToast(`Removed "${hauler.name}".`);
   }, [showToast]);
 
@@ -263,22 +212,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   // Persistence
-  useEffect(() => {
-    localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(brokerList));
-  }, [brokerList]);
-
-  useEffect(() => {
-    localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(templates));
-  }, [templates]);
-
-  useEffect(() => {
-    localStorage.setItem(SEARCH_STORAGE_KEY, JSON.stringify(savedSearches));
-  }, [savedSearches]);
-
-  useEffect(() => {
-    localStorage.setItem(TASK_STORAGE_KEY, JSON.stringify(tasks));
-  }, [tasks]);
-
   useEffect(() => {
     localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(themeConfig));
     document.documentElement.style.setProperty('--primary-color', themeConfig.primaryColor);
@@ -306,9 +239,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     searchPhase, setSearchPhase,
     haulers, setHaulers,
     viewMode, setViewMode,
-    brokerList, setBrokerList,
-    savedSearches, setSavedSearches,
-    tasks, setTasks,
     themeConfig, setThemeConfig,
     isDarkMode, setIsDarkMode,
     toast, showToast,
@@ -319,7 +249,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     stateFilter, setStateFilter,
     contactSearchQuery, setContactSearchQuery,
     sourceFilter, setSourceFilter,
-    templates, setTemplates,
     selectedHaulerIds, setSelectedHaulerIds,
     handleSort,
     toggleHaulerSelection,

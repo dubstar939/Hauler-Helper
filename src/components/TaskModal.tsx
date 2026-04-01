@@ -16,6 +16,7 @@ import {
   Tag
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
+import { useDatabase } from '../context/DatabaseContext';
 import { Task, TaskStatus, TaskPriority } from '../../types';
 import { Modal } from './Modal';
 import { cn } from '../lib/utils';
@@ -26,11 +27,8 @@ interface TaskModalProps {
 }
 
 export const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose }) => {
-  const { 
-    tasks, 
-    setTasks, 
-    showToast 
-  } = useGlobal();
+  const { showToast } = useGlobal();
+  const { tasks, setTasks } = useDatabase();
   
   const [filterStatus, setFilterStatus] = useState<TaskStatus | 'all'>('all');
   const [editingId, setEditingId] = useState<string | null>(null);

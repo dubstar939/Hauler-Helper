@@ -17,6 +17,7 @@ import {
   Tag
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
+import { useDatabase } from '../context/DatabaseContext';
 import { FollowUpSequence, FollowUpStep } from '../../types';
 import { Modal } from './Modal';
 import { cn } from '../lib/utils';
@@ -27,12 +28,9 @@ interface AutomationModalProps {
 }
 
 export const AutomationModal: React.FC<AutomationModalProps> = ({ isOpen, onClose }) => {
-  const { 
-    templates, 
-    showToast 
-  } = useGlobal();
+  const { showToast } = useGlobal();
+  const { templates, followUpSequences: sequences, setFollowUpSequences: setSequences } = useDatabase();
   
-  const [sequences, setSequences] = useState<FollowUpSequence[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<FollowUpSequence>>({});
 

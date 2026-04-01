@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { useGlobal } from './src/context/GlobalContext';
+import { useDatabase } from './src/context/DatabaseContext';
 import { Sidebar } from './src/components/Sidebar';
 import { SearchPanel } from './src/components/SearchPanel';
 import { HaulerList } from './src/components/HaulerList';
@@ -17,11 +18,11 @@ import { AnimatePresence, motion } from 'motion/react';
 const App: React.FC = () => {
   const { 
     viewMode, 
-    tasks, 
-    setTasks, 
     showToast,
     themeConfig
   } = useGlobal();
+
+  const { tasks, setTasks } = useDatabase();
 
   // Modal States
   const [activeHaulerForDraft, setActiveHaulerForDraft] = useState<Hauler | null>(null);

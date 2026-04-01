@@ -16,6 +16,7 @@ import {
   Tag
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
+import { useDatabase } from '../context/DatabaseContext';
 import { EmailTemplate, HaulerType } from '../../types';
 import { Modal } from './Modal';
 import { cn } from '../lib/utils';
@@ -35,11 +36,8 @@ const QUILL_MODULES = {
 };
 
 export const TemplateModal: React.FC<TemplateModalProps> = ({ isOpen, onClose }) => {
-  const { 
-    templates, 
-    setTemplates, 
-    showToast 
-  } = useGlobal();
+  const { showToast } = useGlobal();
+  const { templates, setTemplates } = useDatabase();
   
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<EmailTemplate>>({});

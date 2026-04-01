@@ -30,6 +30,7 @@ export interface EmailTemplate {
   category: HaulerType;
   subject: string;
   content: string;
+  attachments: HaulerAttachment[];
 }
 
 export interface SavedSearch {
@@ -55,8 +56,8 @@ export enum TaskStatus {
 
 export interface Task {
   id: string;
-  haulerId: string;
-  haulerName: string;
+  haulerId?: string;
+  haulerName?: string;
   title: string;
   description?: string;
   dueDate: string;
@@ -75,6 +76,7 @@ export interface Hauler {
   status: HaulerStatus;
   contactSource: 'Search' | 'Broker List';
   lastActionDate: string;
+  lastContacted?: string;
   draftSubject?: string;
   draftContent?: string;
   attachments: HaulerAttachment[];

@@ -7,18 +7,10 @@ export enum HaulerStatus {
 
 export enum HaulerType {
   CURRENT = 'Current',
-  NEW = 'New',
-  CLIENT = 'Client'
+  NEW = 'New'
 }
 
 export interface BrokerContact {
-  id: string;
-  name: string;
-  email: string;
-  phone?: string;
-  location?: string;
-  type?: string;
-  rating?: number;
   haulerName: string;
   brokerEmail: string;
   secondaryEmail?: string;
@@ -62,12 +54,6 @@ export enum TaskStatus {
   OVERDUE = 'Overdue'
 }
 
-export enum TaskPriority {
-  LOW = 'Low',
-  MEDIUM = 'Medium',
-  HIGH = 'High'
-}
-
 export interface Task {
   id: string;
   haulerId?: string;
@@ -76,7 +62,6 @@ export interface Task {
   description?: string;
   dueDate: string;
   status: TaskStatus;
-  priority: TaskPriority;
   createdAt: string;
 }
 
@@ -96,30 +81,6 @@ export interface Hauler {
   draftContent?: string;
   attachments: HaulerAttachment[];
   coordinates?: [number, number]; // [lat, lng]
-  sequenceId?: string;
-  sequenceStepIndex?: number;
-  sequenceStartedAt?: string;
-}
-
-export interface ThemeConfig {
-  primaryColor: string;
-  fontFamily: string;
-  companyName: string;
-  logoUrl?: string;
-}
-
-export interface FollowUpStep {
-  id: string;
-  delayDays: number;
-  templateId: string;
-  type?: string;
-}
-
-export interface FollowUpSequence {
-  id: string;
-  name: string;
-  steps: FollowUpStep[];
-  isActive: boolean;
 }
 
 export interface SearchResult {
@@ -128,16 +89,4 @@ export interface SearchResult {
   website?: string;
   snippet: string;
   sources?: { title: string; uri: string }[];
-}
-
-export type SortKey = 'name' | 'status' | 'type' | 'lastActionDate';
-
-export interface SortConfig {
-  key: SortKey;
-  direction: 'asc' | 'desc';
-}
-
-export interface Placeholder {
-  key: string;
-  label: string;
 }

@@ -47,16 +47,8 @@ interface GlobalContextType {
   setSearchStatus: (status: string) => void;
   searchPhase: number;
   setSearchPhase: (phase: number) => void;
-  haulers: Hauler[];
-  setHaulers: React.Dispatch<React.SetStateAction<Hauler[]>>;
   viewMode: 'list' | 'map';
   setViewMode: (mode: 'list' | 'map') => void;
-  brokerList: BrokerContact[];
-  setBrokerList: React.Dispatch<React.SetStateAction<BrokerContact[]>>;
-  savedSearches: SavedSearch[];
-  setSavedSearches: React.Dispatch<React.SetStateAction<SavedSearch[]>>;
-  tasks: Task[];
-  setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
   themeConfig: ThemeConfig;
   setThemeConfig: React.Dispatch<React.SetStateAction<ThemeConfig>>;
   isDarkMode: boolean;
@@ -83,8 +75,6 @@ interface GlobalContextType {
   handleSort: (key: SortKey) => void;
   toggleHaulerSelection: (id: string) => void;
   toggleAllHaulers: (haulersToSelect: string[]) => void;
-  updateHaulerField: (id: string, field: keyof Hauler, value: any) => void;
-  handleDeleteHauler: (hauler: Hauler) => void;
   handleResetFilters: () => void;
 }
 
@@ -99,7 +89,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isSearching, setIsSearching] = useState(false);
   const [searchStatus, setSearchStatus] = useState('');
   const [searchPhase, setSearchPhase] = useState(0);
-  const [haulers, setHaulers] = useState<Hauler[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'name', direction: 'asc' });
@@ -178,26 +167,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   }, []);
 
-  const updateHaulerField = useCallback((id: string, field: keyof Hauler, value: any) => {
-    setHaulers(prev => prev.map(h => {
-      if (h.id === id) {
-        const updates: Partial<Hauler> = { [field]: value };
-        if (field === 'status' && (value === HaulerStatus.SENT || value === HaulerStatus.REPLIED)) {
-          updates.lastContacted = new Date().toLocaleDateString();
-          updates.lastActionDate = new Date().toLocaleDateString();
-        }
-        return { ...h, ...updates };
-      }
-      return h;
-    }));
-  }, []);
-
-  const handleDeleteHauler = useCallback((hauler: Hauler) => {
-    if (!window.confirm(`Remove "${hauler.name}"?`)) return;
-    setHaulers(prev => prev.filter(h => h.id !== hauler.id));
-    showToast(`Removed "${hauler.name}".`);
-  }, [showToast]);
-
   const handleResetFilters = useCallback(() => {
     setLocation('');
     setFacilityAddress('');
@@ -237,7 +206,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     isSearching, setIsSearching,
     searchStatus, setSearchStatus,
     searchPhase, setSearchPhase,
-    haulers, setHaulers,
     viewMode, setViewMode,
     themeConfig, setThemeConfig,
     isDarkMode, setIsDarkMode,
@@ -253,8 +221,6 @@ export const GlobalProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     handleSort,
     toggleHaulerSelection,
     toggleAllHaulers,
-    updateHaulerField,
-    handleDeleteHauler,
     handleResetFilters
   };
 

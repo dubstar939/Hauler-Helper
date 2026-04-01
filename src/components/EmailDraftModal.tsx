@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import ReactQuill from 'react-quill-new';
+const QuillWrapper = ReactQuill as any;
 import 'react-quill-new/dist/quill.snow.css';
 import { 
   X, 
@@ -34,9 +35,8 @@ const QUILL_MODULES = {
 
 export const EmailDraftModal: React.FC<EmailDraftModalProps> = ({ hauler, onClose }) => {
   const { showToast } = useGlobal();
-  const { templates } = useDatabase();
+  const { templates, updateHaulerField } = useDatabase();
   const { 
-    updateHaulerField, 
     facilityAddress, 
     location, 
     clientRef, 
@@ -152,12 +152,13 @@ export const EmailDraftModal: React.FC<EmailDraftModalProps> = ({ hauler, onClos
             <div className="flex-1 flex flex-col min-h-[400px]">
               <label className="block text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2 ml-1">Email Content</label>
               <div className="flex-1 bg-gray-50 dark:bg-gray-800 rounded-2xl overflow-hidden border border-transparent focus-within:border-indigo-500/30 transition-all">
-                <ReactQuill
+                <QuillWrapper
                   theme="snow"
                   value={hauler.draftContent || ''}
                   onChange={(val) => updateHaulerField(hauler.id, 'draftContent', val)}
                   modules={QUILL_MODULES}
                   className="h-full border-none"
+                  ref={quillRef}
                 />
               </div>
             </div>

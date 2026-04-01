@@ -1,6 +1,7 @@
 
 export const SENDER_EMAIL = "chrisw@wasteexperts.com";
 export const DB_STORAGE_KEY = 'hauler_hunter_db_v1';
+export const BROKER_STORAGE_KEY = 'hauler_hunter_brokers_v1';
 export const TEMPLATE_STORAGE_KEY = 'hauler_hunter_templates_v1';
 export const SEARCH_STORAGE_KEY = 'hauler_hunter_saved_searches_v1';
 export const TASK_STORAGE_KEY = 'hauler_hunter_tasks_v1';

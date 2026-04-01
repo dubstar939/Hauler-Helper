@@ -46,7 +46,8 @@ const App: React.FC = () => {
       status: TaskStatus.PENDING,
       priority: TaskPriority.MEDIUM,
       haulerId: hauler.id,
-      haulerName: hauler.name
+      haulerName: hauler.name,
+      createdAt: new Date().toISOString()
     };
     setTasks([newTask, ...tasks]);
     showToast(`Task created for ${hauler.name}`, 'success');

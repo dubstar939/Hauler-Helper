@@ -5,6 +5,7 @@ import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
 import { useGlobal } from '../context/GlobalContext';
+import { useDatabase } from '../context/DatabaseContext';
 import { Hauler, HaulerStatus, HaulerType } from '../../types';
 
 interface HaulerMapProps {
@@ -13,7 +14,8 @@ interface HaulerMapProps {
 }
 
 export const HaulerMap: React.FC<HaulerMapProps> = ({ onDraft, onAddTask }) => {
-  const { haulers, isDarkMode } = useGlobal();
+  const { isDarkMode } = useGlobal();
+  const { haulers } = useDatabase();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const clusterGroupRef = useRef<any>(null);

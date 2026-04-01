@@ -16,6 +16,7 @@ import {
   FileText
 } from 'lucide-react';
 import { useGlobal } from '../context/GlobalContext';
+import { useDatabase } from '../context/DatabaseContext';
 import { Hauler, HaulerStatus, HaulerType } from '../../types';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -155,16 +156,22 @@ export const HaulerList: React.FC<{
   onAddTask: (h: Hauler) => void;
 }> = ({ onDraft, onAddTask }) => {
   const { 
-    haulers, 
     sortConfig, 
     handleSort,
     sourceFilter, setSourceFilter,
     contactSearchQuery, setContactSearchQuery,
     haulerTypeFilter, setHaulerTypeFilter,
-    handleDeleteHauler,
     selectedHaulerIds,
     toggleAllHaulers
   } = useGlobal();
+
+  const { haulers, handleDeleteHauler: baseDeleteHauler } = useDatabase();
+  const { showToast } = useGlobal();
+
+  const handleDeleteHauler = (hauler: Hauler) => {
+    baseDeleteHauler(hauler);
+    showToast(`Removed "${hauler.name}".`);
+  };
 
   const sortedHaulers = React.useMemo(() => {
     let items = [...haulers];

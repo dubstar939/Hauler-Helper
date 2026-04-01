@@ -15,11 +15,10 @@ export const useHaulerHunter = () => {
     setIsSearching,
     setSearchStatus,
     setSearchPhase,
-    setHaulers,
     showToast
   } = useGlobal();
 
-  const { brokerList } = useDatabase();
+  const { brokerList, setHaulers } = useDatabase();
 
   const geocodeLocation = async (locString: string): Promise<[number, number] | undefined> => {
     try {
@@ -67,7 +66,7 @@ export const useHaulerHunter = () => {
       const coords = await geocodeLocation(res.name + " " + (location || "United States"));
 
       return {
-        id: `h-${Date.now()}-${idx}-${source}`, 
+        id: `h-${Date.now()}-${Math.random().toString(36).substring(2, 11)}-${idx}-${source}`, 
         name: res.name, 
         location: location || (source === 'Search' && !location ? "United States" : "Custom Lookup"),
         email: res.email, 

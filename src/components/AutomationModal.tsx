@@ -29,7 +29,7 @@ interface AutomationModalProps {
 
 export const AutomationModal: React.FC<AutomationModalProps> = ({ isOpen, onClose }) => {
   const { showToast } = useGlobal();
-  const { templates, followUpSequences: sequences, setFollowUpSequences: setSequences } = useDatabase();
+  const { templates, sequences, setSequences } = useDatabase();
   
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<FollowUpSequence>>({});

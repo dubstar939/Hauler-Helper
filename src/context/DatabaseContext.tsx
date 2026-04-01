@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { 
+  Hauler,
+  HaulerStatus,
   BrokerContact, 
   EmailTemplate, 
   SavedSearch, 
@@ -8,7 +10,8 @@ import {
 } from '../../types';
 import { 
   MOCK_BROKERS, 
-  DB_STORAGE_KEY, 
+  DB_STORAGE_KEY,
+  BROKER_STORAGE_KEY, 
   TEMPLATE_STORAGE_KEY, 
   SEARCH_STORAGE_KEY, 
   TASK_STORAGE_KEY, 
@@ -18,6 +21,8 @@ import { supabase } from '../supabase';
 import { useGlobal } from './GlobalContext';
 
 interface DatabaseContextType {
+  haulers: Hauler[];
+  setHaulers: React.Dispatch<React.SetStateAction<Hauler[]>>;
   brokerList: BrokerContact[];
   setBrokerList: React.Dispatch<React.SetStateAction<BrokerContact[]>>;
   templates: EmailTemplate[];
@@ -28,6 +33,8 @@ interface DatabaseContextType {
   setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
   sequences: FollowUpSequence[];
   setSequences: React.Dispatch<React.SetStateAction<FollowUpSequence[]>>;
+  updateHaulerField: (id: string, field: keyof Hauler, value: any) => void;
+  handleDeleteHauler: (hauler: Hauler) => void;
   
   // Persistence Actions
   syncWithRemote: () => Promise<void>;
@@ -40,14 +47,26 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const { showToast } = useGlobal();
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const [brokerList, setBrokerList] = useState<BrokerContact[]>(() => {
-    let initialList = MOCK_BROKERS;
+  const [haulers, setHaulers] = useState<Hauler[]>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(DB_STORAGE_KEY);
       if (saved) {
+        try { return JSON.parse(saved); } catch (e) { console.error(e); }
+      }
+    }
+    return [];
+  });
+
+  const [brokerList, setBrokerList] = useState<BrokerContact[]>(() => {
+    let initialList = MOCK_BROKERS.map((b, i) => ({ ...b, id: b.id || `b-${i}` }));
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(BROKER_STORAGE_KEY);
+      if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) initialList = parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            initialList = parsed.map((b: any, i: number) => ({ ...b, id: b.id || `b-${i}` }));
+          }
         } catch (e) { console.error(e); }
       }
     }
@@ -94,6 +113,25 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return [];
   });
 
+  const updateHaulerField = useCallback((id: string, field: keyof Hauler, value: any) => {
+    setHaulers(prev => prev.map(h => {
+      if (h.id === id) {
+        const updates: Partial<Hauler> = { [field]: value };
+        if (field === 'status' && (value === HaulerStatus.SENT || value === HaulerStatus.REPLIED)) {
+          updates.lastContacted = new Date().toLocaleDateString();
+          updates.lastActionDate = new Date().toLocaleDateString();
+        }
+        return { ...h, ...updates };
+      }
+      return h;
+    }));
+  }, []);
+
+  const handleDeleteHauler = useCallback((hauler: Hauler) => {
+    if (!window.confirm(`Remove "${hauler.name}"?`)) return;
+    setHaulers(prev => prev.filter(h => h.id !== hauler.id));
+  }, []);
+
   const syncWithRemote = useCallback(async () => {
     setIsSyncing(true);
     try {
@@ -112,7 +150,11 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Local Persistence
   useEffect(() => {
-    localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(brokerList));
+    localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(haulers));
+  }, [haulers]);
+
+  useEffect(() => {
+    localStorage.setItem(BROKER_STORAGE_KEY, JSON.stringify(brokerList));
   }, [brokerList]);
 
   useEffect(() => {
@@ -132,11 +174,14 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [sequences]);
 
   const value = {
+    haulers, setHaulers,
     brokerList, setBrokerList,
     templates, setTemplates,
     savedSearches, setSavedSearches,
     tasks, setTasks,
     sequences, setSequences,
+    updateHaulerField,
+    handleDeleteHauler,
     syncWithRemote,
     isSyncing
   };

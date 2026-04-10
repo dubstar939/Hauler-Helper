@@ -159,13 +159,15 @@ export const TemplateModal: React.FC<TemplateModalProps> = ({ isOpen, onClose })
                 </div>
                 <div>
                   <label className="block text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2 ml-1">Category</label>
-                  <input
-                    type="text"
+                  <select
                     value={editForm.category || ''}
-                    onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                    onChange={(e) => setEditForm({ ...editForm, category: e.target.value as any })}
                     className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800 border-none rounded-2xl text-sm font-bold focus:ring-2 focus:ring-indigo-500/20 transition-all dark:text-white"
-                    placeholder="e.g. Follow-up"
-                  />
+                  >
+                    <option value={HaulerType.CURRENT}>Current Partner</option>
+                    <option value={HaulerType.NEW}>New Partner</option>
+                    <option value={HaulerType.CLIENT}>Client</option>
+                  </select>
                 </div>
               </div>
 

@@ -63,7 +63,7 @@ import {
 import L from 'leaflet';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
-import { Hauler, HaulerStatus, HaulerType, BrokerContact, HaulerAttachment, SearchResult, EmailTemplate, SavedSearch, Task, TaskStatus, IntelligenceResult } from './types';
+import { Hauler, HaulerStatus, HaulerType, BrokerContact, HaulerAttachment, SearchResult, EmailTemplate, SavedSearch, Task, TaskStatus, IntelligenceResult, SortKey, SortConfig, Placeholder } from './types';
 import { MOCK_BROKERS, BID_TEMPLATE_CURRENT, BID_TEMPLATE_NEW, EMAIL_SIGNATURE } from './constants';
 import { getHaulerIntelligence } from './src/services/geminiService';
 
@@ -73,20 +73,14 @@ const TEMPLATE_STORAGE_KEY = 'hauler_hunter_templates_v1';
 const SEARCH_STORAGE_KEY = 'hauler_hunter_saved_searches_v1';
 const TASK_STORAGE_KEY = 'hauler_hunter_tasks_v1';
 
-const PLACEHOLDERS = [
-  { key: '{haulerName}', label: 'Hauler Name' },
-  { key: '{address}', label: 'Address' },
-  { key: '{location}', label: 'City/State' },
-  { key: '{clientRef}', label: 'Client Ref' },
-  { key: '{accountInfo}', label: 'Account Info' },
-  { key: '{signature}', label: 'Signature' },
+const PLACEHOLDERS: Placeholder[] = [
+  { label: 'Hauler Name', key: '{haulerName}' },
+  { label: 'Address', key: '{address}' },
+  { label: 'City/State', key: '{location}' },
+  { label: 'Client Ref', key: '{clientRef}' },
+  { label: 'Account Info', key: '{accountInfo}' },
+  { label: 'Signature', key: '{signature}' },
 ];
-
-type SortKey = 'name' | 'status' | 'type' | 'lastActionDate';
-interface SortConfig {
-  key: SortKey;
-  direction: 'asc' | 'desc';
-}
 
 const DEFAULT_TEMPLATES: EmailTemplate[] = [
   {

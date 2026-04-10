@@ -7,10 +7,18 @@ export enum HaulerStatus {
 
 export enum HaulerType {
   CURRENT = 'Current',
-  NEW = 'New'
+  NEW = 'New',
+  CLIENT = 'Client'
 }
 
 export interface BrokerContact {
+  id?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  location?: string;
+  type?: string;
+  rating?: number;
   haulerName: string;
   brokerEmail: string;
   secondaryEmail?: string;
@@ -55,6 +63,12 @@ export enum TaskStatus {
   OVERDUE = 'Overdue'
 }
 
+export enum TaskPriority {
+  LOW = 'Low',
+  MEDIUM = 'Medium',
+  HIGH = 'High'
+}
+
 export interface Task {
   id: string;
   haulerId?: string;
@@ -63,6 +77,7 @@ export interface Task {
   description?: string;
   dueDate: string;
   status: TaskStatus;
+  priority?: TaskPriority;
   createdAt: string;
 }
 
@@ -117,4 +132,40 @@ export interface IntelligenceResult {
   };
   optionalEnhancements?: string;
   fullMarkdown: string;
+}
+
+export interface FollowUpStep {
+  id: string;
+  dayDelay?: number;
+  delayDays?: number;
+  templateId: string;
+  type?: string;
+}
+
+export interface FollowUpSequence {
+  id: string;
+  name: string;
+  steps: FollowUpStep[];
+  isActive?: boolean;
+}
+
+export interface ThemeConfig {
+  primaryColor: string;
+  fontFamily: string;
+  companyName?: string;
+  logoUrl?: string;
+  borderRadius?: string;
+  darkMode?: boolean;
+}
+
+export type SortKey = 'name' | 'status' | 'type' | 'lastActionDate';
+
+export interface SortConfig {
+  key: SortKey;
+  direction: 'asc' | 'desc';
+}
+
+export interface Placeholder {
+  label: string;
+  key: string;
 }

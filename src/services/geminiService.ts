@@ -1,9 +1,21 @@
-import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { IntelligenceResult } from "../../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+let genAI: GoogleGenAI | null = null;
+
+const getGenAI = () => {
+  if (!genAI) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY is missing. Please ensure it is set in your environment variables (e.g., in Vercel project settings).");
+    }
+    genAI = new GoogleGenAI({ apiKey });
+  }
+  return genAI;
+};
 
 export const getHaulerIntelligence = async (address: string, existingHaulers: string[] = []): Promise<IntelligenceResult> => {
+  const ai = getGenAI();
   const model = "gemini-1.5-flash";
   
   const systemInstruction = `You are the Hauler Hunter Master Intelligence Engine, responsible for identifying the correct waste hauler for any property, validating service details, and generating accurate, reliable outputs for the Hauler Hunter app.

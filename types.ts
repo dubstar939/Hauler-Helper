@@ -16,6 +16,7 @@ export interface BrokerContact {
   secondaryEmail?: string;
   notes?: string;
   states?: string[];
+  coordinates?: [number, number];
 }
 
 export interface HaulerAttachment {

@@ -109,9 +109,12 @@ const DEFAULT_TEMPLATES: EmailTemplate[] = [
 
 const QUILL_MODULES = {
   toolbar: [
-    ['bold', 'italic', 'underline'],
+    [{ 'header': [1, 2, 3, false] }],
+    ['bold', 'italic', 'underline', 'strike'],
+    [{ 'color': [] }, { 'background': [] }],
     [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-    ['clean']
+    [{ 'align': [] }],
+    ['link', 'clean']
   ],
 };
 
@@ -268,7 +271,8 @@ const App: React.FC = () => {
     }
 
     try {
-      const result = await getHaulerIntelligence(searchAddress);
+      const existingHaulerNames = brokerList.map(b => b.haulerName);
+      const result = await getHaulerIntelligence(searchAddress, existingHaulerNames);
       setIntelligenceResult(result);
       
       // Also add the primary hauler to the session results if possible
@@ -279,6 +283,15 @@ const App: React.FC = () => {
           snippet: result.primaryHauler.reasoning
         };
         processResults([primaryHaulerResult], 'Search');
+        
+        // Geocode the primary hauler for the map
+        geocodeLocation(`${result.primaryHauler.name} ${searchAddress}`).then(coords => {
+          if (coords) {
+            setHaulers(prev => prev.map(h => 
+              h.name === result.primaryHauler.name ? { ...h, coordinates: coords } : h
+            ));
+          }
+        });
       }
 
       setImportFeedback("Intelligence Engine analysis complete.");
@@ -536,8 +549,22 @@ const App: React.FC = () => {
     }
   }, [isDarkMode]);
 
+  const [placeholderSearch, setPlaceholderSearch] = useState('');
+  const [showPlaceholderDropdown, setShowPlaceholderDropdown] = useState(false);
+  const placeholderDropdownRef = useRef<HTMLDivElement>(null);
+
+  const filteredPlaceholders = useMemo(() => {
+    return PLACEHOLDERS.filter(p => 
+      p.label.toLowerCase().includes(placeholderSearch.toLowerCase()) ||
+      p.key.toLowerCase().includes(placeholderSearch.toLowerCase())
+    );
+  }, [placeholderSearch]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      if (placeholderDropdownRef.current && !placeholderDropdownRef.current.contains(event.target as Node)) {
+        setShowPlaceholderDropdown(false);
+      }
       if (dbSearchRef.current && !dbSearchRef.current.contains(event.target as Node)) {
         setShowDbSearchResults(false);
       }
@@ -575,10 +602,32 @@ const App: React.FC = () => {
     };
   }, [viewMode]);
 
+  const centerMapOnHauler = (coords: [number, number]) => {
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.setView(coords, 14, { animate: true });
+      setViewMode('map');
+    }
+  };
+
   useEffect(() => {
     if (viewMode === 'map' && mapInstanceRef.current) {
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
+
+      // @ts-ignore - Leaflet.markercluster
+      const clusterGroup = L.markerClusterGroup({
+        showCoverageOnHover: false,
+        zoomToBoundsOnClick: true,
+        spiderfyOnMaxZoom: true,
+        iconCreateFunction: (cluster: any) => {
+          const count = cluster.getChildCount();
+          return L.divIcon({
+            html: `<div class="bg-indigo-600 w-10 h-10 rounded-full border-4 border-white shadow-2xl flex items-center justify-center text-white font-black text-xs">${count}</div>`,
+            className: 'custom-cluster-icon',
+            iconSize: [40, 40]
+          });
+        }
+      });
 
       const bounds = L.latLngBounds([]);
       let hasPoints = false;
@@ -611,40 +660,63 @@ const App: React.FC = () => {
           const marker = L.marker(h.coordinates, {
             icon: L.divIcon({
               className: 'custom-marker',
-              html: `<div class="bg-green-600 w-8 h-8 rounded-full border-4 border-white shadow-xl flex items-center justify-center text-white"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></div>`,
+              html: `<div class="bg-green-600 w-8 h-8 rounded-full border-4 border-white shadow-xl flex items-center justify-center text-white hover:scale-110 transition-transform"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></div>`,
               iconSize: [32, 32],
               iconAnchor: [16, 32]
             })
-          }).addTo(mapInstanceRef.current!);
+          });
 
           marker.bindPopup(`
-            <div class="p-2">
-              <h4 class="font-black text-sm">${h.name}</h4>
-              <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-2">${h.contactSource === 'Search' ? 'Web Search' : 'Broker List'}</p>
-              <button id="marker-draft-${h.id}" class="w-full py-1.5 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-lg hover:bg-indigo-700 transition">Draft Email</button>
+            <div class="p-3 min-w-[200px]">
+              <div class="flex items-center gap-2 mb-2">
+                <div class="p-1.5 bg-green-50 rounded-lg"><Truck class="w-4 h-4 text-green-600" /></div>
+                <div>
+                  <h4 class="font-black text-sm text-gray-900">${h.name}</h4>
+                  <p class="text-[9px] text-gray-500 uppercase font-black tracking-widest">${h.contactSource}</p>
+                </div>
+              </div>
+              <div class="space-y-2">
+                <div class="flex items-center gap-2 text-[10px] font-bold text-gray-600">
+                  <Mail class="w-3 h-3" /> ${h.email || 'No email on file'}
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <button id="marker-draft-${h.id}" class="w-full py-2 bg-indigo-600 text-white text-[9px] font-black uppercase rounded-lg hover:bg-indigo-700 transition shadow-sm">Draft Email</button>
+                  <button id="marker-view-${h.id}" class="w-full py-2 bg-gray-100 text-gray-700 text-[9px] font-black uppercase rounded-lg hover:bg-gray-200 transition">View Details</button>
+                </div>
+              </div>
             </div>
-          `);
+          `, { closeButton: false, className: 'custom-popup' });
 
           marker.on('popupopen', () => {
-             const btn = document.getElementById(`marker-draft-${h.id}`);
-             if (btn) {
-               btn.onclick = () => {
+             const draftBtn = document.getElementById(`marker-draft-${h.id}`);
+             if (draftBtn) {
+               draftBtn.onclick = () => {
                  setSelectedHauler(h);
                  setIsDrafting(true);
                };
              }
+             const viewBtn = document.getElementById(`marker-view-${h.id}`);
+             if (viewBtn) {
+               viewBtn.onclick = () => {
+                 setSelectedHauler(h);
+               };
+             }
           });
 
-          markersRef.current.push(marker);
+          clusterGroup.addLayer(marker);
           bounds.extend(h.coordinates);
         }
       });
+
+      mapInstanceRef.current.addLayer(clusterGroup);
+      // @ts-ignore
+      markersRef.current.push(clusterGroup);
 
       if (hasPoints) {
         mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
       }
     }
-  }, [sortedHaulers, viewMode]);
+  }, [sortedHaulers, viewMode, facilityCoords]);
 
   const [newTaskData, setNewTaskData] = useState<Partial<Task>>({
     title: '',
@@ -893,7 +965,7 @@ const App: React.FC = () => {
     setTimeout(() => setImportFeedback(null), 3000);
   };
 
-  const handleManualAddHauler = (e: React.FormEvent) => {
+  const handleManualAddHauler = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newHaulerData.haulerName.trim() || !newHaulerData.brokerEmail.trim()) {
       alert("Both hauler name and primary email are required.");
@@ -904,8 +976,17 @@ const App: React.FC = () => {
       alert("A hauler with this email already exists in the database.");
       return;
     }
-    setBrokerList(prev => [newHaulerData, ...prev]);
-    setImportFeedback(`Added "${newHaulerData.haulerName}" to internal database.`);
+
+    const haulerToSave = { ...newHaulerData };
+    
+    // Attempt geocoding if states are provided
+    if (haulerToSave.states && haulerToSave.states.length > 0) {
+      const coords = await geocodeLocation(`${haulerToSave.haulerName} ${haulerToSave.states[0]}`);
+      if (coords) haulerToSave.coordinates = coords;
+    }
+
+    setBrokerList(prev => [haulerToSave, ...prev]);
+    setImportFeedback(`Added "${haulerToSave.haulerName}" to internal database.`);
     setNewHaulerData({ haulerName: '', brokerEmail: '', secondaryEmail: '', notes: '', states: [] });
     setIsAddingHauler(false);
     setTimeout(() => setImportFeedback(null), 3000);
@@ -1762,14 +1843,26 @@ const App: React.FC = () => {
                         <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Primary Hauler</span>
                       </div>
                       <div className="text-xl font-black text-gray-900 dark:text-white mb-1">{intelligenceResult.primaryHauler.name}</div>
-                      <div className="flex items-center gap-1.5">
-                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${
-                          intelligenceResult.primaryHauler.confidence === 'High' ? 'bg-green-100 text-green-700' :
-                          intelligenceResult.primaryHauler.confidence === 'Medium' ? 'bg-amber-100 text-amber-700' :
-                          'bg-red-100 text-red-700'
-                        }`}>
-                          {intelligenceResult.primaryHauler.confidence} Confidence
-                        </span>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${
+                            intelligenceResult.primaryHauler.confidence === 'High' ? 'bg-green-100 text-green-700' :
+                            intelligenceResult.primaryHauler.confidence === 'Medium' ? 'bg-amber-100 text-amber-700' :
+                            'bg-red-100 text-red-700'
+                          }`}>
+                            {intelligenceResult.primaryHauler.confidence} Confidence
+                          </span>
+                        </div>
+                        <button 
+                          onClick={async () => {
+                            const coords = await geocodeLocation(`${intelligenceResult.primaryHauler.name} ${facilityAddress || location}`);
+                            if (coords) centerMapOnHauler(coords);
+                          }}
+                          className="p-1 text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                          title="View on Map"
+                        >
+                          <MapPin className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
 
@@ -2065,6 +2158,15 @@ const App: React.FC = () => {
                           >
                             <Trash2 className="w-5 h-5" aria-hidden="true" />
                           </button>
+                          {h.coordinates && (
+                            <button 
+                              onClick={() => centerMapOnHauler(h.coordinates!)} 
+                              className="p-2.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 transition focus-visible:ring-2 focus-visible:ring-indigo-400 outline-none"
+                              title="Center on Map"
+                            >
+                              <MapPin className="w-5 h-5" aria-hidden="true" />
+                            </button>
+                          )}
                           <button 
                             onClick={() => { setSelectedHauler(h); setIsDrafting(true); }} 
                             className="px-5 py-2.5 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-xl text-sm font-black flex items-center gap-2 hover:bg-green-100 transition shadow-sm focus-visible:ring-2 focus-visible:ring-green-400 outline-none"
@@ -2468,12 +2570,68 @@ const App: React.FC = () => {
                 <div className="text-[10px] font-black uppercase text-gray-500 flex items-center gap-1.5 border-r border-gray-200 dark:border-gray-700 pr-4">
                   <Terminal className="w-4 h-4" /> Placeholders
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {PLACEHOLDERS.map((p) => (
+                <div className="relative" ref={placeholderDropdownRef}>
+                  <button 
+                    onClick={() => setShowPlaceholderDropdown(!showPlaceholderDropdown)}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 hover:border-indigo-300 transition-all shadow-sm"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Insert Placeholder
+                  </button>
+                  
+                  <AnimatePresence>
+                    {showPlaceholderDropdown && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        className="absolute left-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-2xl z-50 overflow-hidden"
+                      >
+                        <div className="p-3 border-b border-gray-100 dark:border-gray-700">
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                            <input 
+                              type="text" 
+                              placeholder="Search placeholders..."
+                              value={placeholderSearch}
+                              onChange={(e) => setPlaceholderSearch(e.target.value)}
+                              className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-indigo-500 transition-all"
+                              autoFocus
+                            />
+                          </div>
+                        </div>
+                        <div className="max-h-60 overflow-y-auto p-1">
+                          {filteredPlaceholders.length > 0 ? (
+                            filteredPlaceholders.map((p) => (
+                              <button
+                                key={p.key}
+                                onClick={() => {
+                                  insertPlaceholderIntoDraft(p.key);
+                                  setShowPlaceholderDropdown(false);
+                                  setPlaceholderSearch('');
+                                }}
+                                className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors text-left group"
+                              >
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-bold text-gray-900 dark:text-white group-hover:text-indigo-600">{p.label}</span>
+                                  <span className="text-[10px] text-gray-500 font-mono">{p.key}</span>
+                                </div>
+                                <Plus className="w-3 h-3 text-gray-300 group-hover:text-indigo-500" />
+                              </button>
+                            ))
+                          ) : (
+                            <div className="px-3 py-4 text-center text-[10px] text-gray-500 font-bold uppercase tracking-widest">No matches</div>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+                <div className="flex flex-wrap gap-2 overflow-hidden max-h-8">
+                  {PLACEHOLDERS.slice(0, 3).map((p) => (
                     <button
                       key={p.key}
                       onClick={() => insertPlaceholderIntoDraft(p.key)}
-                      className="px-2.5 py-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:border-blue-300 transition-all shadow-sm"
+                      className="px-2.5 py-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:border-indigo-300 transition-all shadow-sm whitespace-nowrap"
                     >
                       {p.label}
                     </button>

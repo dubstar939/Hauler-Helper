@@ -3,8 +3,8 @@ import { IntelligenceResult } from "../../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
-export const getHaulerIntelligence = async (address: string): Promise<IntelligenceResult> => {
-  const model = "gemini-3.1-pro-preview";
+export const getHaulerIntelligence = async (address: string, existingHaulers: string[] = []): Promise<IntelligenceResult> => {
+  const model = "gemini-1.5-flash";
   
   const systemInstruction = `You are the Hauler Hunter Master Intelligence Engine, responsible for identifying the correct waste hauler for any property, validating service details, and generating accurate, reliable outputs for the Hauler Hunter app.
 
@@ -17,6 +17,9 @@ Your mission:
 - Provide a detailed explanation of the territory logic, referencing specific municipal boundaries, franchise agreements, or known hauler service maps.
 - Expand the likely container setup to include common sizes (e.g., 2-yard, 4-yard, 6-yard, 8-yard) and frequencies (e.g., weekly, bi-weekly, monthly) based on typical commercial waste services.
 - Generate clean, structured outputs for the Hauler Hunter UI.
+
+IMPORTANT: The user already has the following haulers in their database: ${existingHaulers.join(', ')}. 
+Focus your search on identifying UPDATED information or NEW haulers that might not be in this list, especially local independents or recent market entrants.
 
 You understand the waste industry:
 - Municipal franchise zones

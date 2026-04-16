@@ -1,25 +1,4 @@
 
-export const SENDER_EMAIL = "chrisw@wasteexperts.com";
-export const DB_STORAGE_KEY = 'hauler_hunter_db_v1';
-export const BROKER_STORAGE_KEY = 'hauler_hunter_brokers_v1';
-export const TEMPLATE_STORAGE_KEY = 'hauler_hunter_templates_v1';
-export const SEARCH_STORAGE_KEY = 'hauler_hunter_saved_searches_v1';
-export const TASK_STORAGE_KEY = 'hauler_hunter_tasks_v1';
-export const THEME_STORAGE_KEY = 'hauler_hunter_theme_v1';
-export const AUTOMATION_STORAGE_KEY = 'hauler_hunter_automation_v1';
-
-export const PLACEHOLDERS = [
-  { key: '{haulerName}', label: 'Hauler Name' },
-  { key: '{address}', label: 'Address' },
-  { key: '{location}', label: 'City/State' },
-  { key: '{clientRef}', label: 'Client Ref' },
-  { key: '{accountInfo}', label: 'Account Info' },
-  { key: '{signature}', label: 'Signature' },
-  { key: '{date}', label: 'Current Date' },
-  { key: '{overageAmount}', label: 'Overage Details' },
-  { key: '{contaminationType}', label: 'Contamination Type' },
-];
-
 export const EMAIL_SIGNATURE = `Best regards,
 
 Chris W.
@@ -29,85 +8,20 @@ www.wasteexperts.com`;
 
 export const BID_TEMPLATE_CURRENT = `Good Morning,
 
-Please provide a competitive bid to retain customer {accountInfo} (details attached).
+Please see attached form.
 
-Requirements:
-- 36-month term
-- No auto-renewal
-- Rate firm Year 1; 5% CPI cap Years 2 & 3
-- 30-day termination notice
+We are seeking pricing to retain customer {accountInfo}
 
-We value our partnership and look forward to your best proposal.
+Please provide your best pricing. The customer is seeking a 36-month service agreement, with no auto-renewal, rate firm first year and CPI cap of 5% on year 2 & 3. 30 day out.
 
 Thank you,
 {signature}`;
 
 export const BID_TEMPLATE_NEW = `Hi {haulerName},
 
-We are currently seeking all-in pricing for a new customer at {address} (details attached).
+Please see attached form.
 
-Requirements:
-- 36-month term
-- No auto-renewal
-- Rate firm Year 1; 5% CPI cap Years 2 & 3
-- 30-day termination notice
-
-Please provide your best rates for this opportunity.
-
-Best regards,
-{signature}`;
-
-export const TEMPLATE_CLIENT_OVERAGE = `Hi {haulerName},
-
-We have received a report of a dumpster overage at the following location:
-Address: {address}
-Account: {accountInfo}
-Overage Details: {overageAmount}
-
-Please review and let us know if this was a one-time occurrence or if we need to adjust the service frequency.
-
-Thank you,
-{signature}`;
-
-export const TEMPLATE_CLIENT_CONTAMINATION = `Hi {haulerName},
-
-We are reporting a recycling contamination issue at:
-Address: {address}
-Account: {accountInfo}
-Contamination Type: {contaminationType}
-
-Please provide photos of the contamination so we can review with the facility manager.
-
-Best regards,
-{signature}`;
-
-export const TEMPLATE_MISSED_PICKUP = `Hi {haulerName},
-
-We are reporting a missed pickup for the following location:
-Address: {address}
-Account: {accountInfo}
-
-Please let us know when the recovery is scheduled.
-
-{signature}`;
-
-export const TEMPLATE_RFQ_COMPACTOR = `Hi {haulerName},
-
-We are seeking a quote for a compactor installation at:
-Location: {address}
-Client Ref: {clientRef}
-
-Please provide equipment specs and monthly rental/haul rates.
-
-{signature}`;
-
-export const TEMPLATE_BILLING_INQUIRY = `Hi {haulerName},
-
-We have a question regarding the recent invoice for:
-Account: {accountInfo}
-Location: {address}
-
-Please review and provide clarification.
+We are seeking pricing for a customer located on {address}. If the area referenced is within your service area, please provide your best (all in) pricing. The customer is seeking a 36-month service agreement, with no auto-renewal, rate firm first year and CPI cap of 5% on year 2 & 3. 30 day out.
 
 {signature}`;
 
@@ -131,17 +45,6 @@ export const MOCK_BROKERS: any[] = [
   { haulerName: 'Meridian Waste (Francesa Weir)', brokerEmail: 'fwier@meridianwaste.com', notes: 'FL Broker Contact', states: ['FL'] },
   { haulerName: 'Active Waste Solutions', brokerEmail: 'lmattingly@activewastesolutions.com', notes: 'NC/SC Areas', states: ['NC', 'SC'] },
   { haulerName: 'JJ\'s Waste and Recycling', brokerEmail: 'yenny.spainhower@jjswaste.com', notes: 'FL Area', states: ['FL'] },
-  { haulerName: 'Recology (Western)', brokerEmail: 'info@recology.com', notes: 'WA, OR, CA Regional', states: ['WA', 'OR', 'CA'] },
-  { haulerName: 'Rumpke Waste & Recycling', brokerEmail: 'broker.desk@rumpke.com', notes: 'OH, KY, IN, WV', states: ['OH', 'KY', 'IN', 'WV'] },
-  { haulerName: 'Kimble Recycling', brokerEmail: 'sales@kimble-recycling.com', notes: 'OH Regional', states: ['OH'] },
-  { haulerName: 'Burrtec Waste Industries', brokerEmail: 'brokers@burrtec.com', notes: 'CA Inland Empire', states: ['CA'] },
-  { haulerName: 'Athens Services', brokerEmail: 'info@athensservices.com', notes: 'CA Los Angeles Area', states: ['CA'] },
-  { haulerName: 'Texas Disposal Systems', brokerEmail: 'brokers@texasdisposal.com', notes: 'TX Central/Austin', states: ['TX'] },
-  { haulerName: 'Borden Waste-Away', brokerEmail: 'service@wasteawaygroup.com', notes: 'IN, MI Regional', states: ['IN', 'MI'] },
-  { haulerName: 'Lakeshore Recycling (LRS)', brokerEmail: 'brokers@lrsrecycles.com', notes: 'IL, WI, MN', states: ['IL', 'WI', 'MN'] },
-  { haulerName: 'Waste Management (Pacific)', brokerEmail: 'pnwbroker@wm.com', notes: 'WA, OR, ID, AK', states: ['WA', 'OR', 'ID', 'AK'] },
-  { haulerName: 'Republic Services (West)', brokerEmail: 'westregionbrokers@republicservices.com', notes: 'AZ, NV, UT', states: ['AZ', 'NV', 'UT'] },
-  { haulerName: 'Waste Connections (Mountain)', brokerEmail: 'mountainbrokers@wasteconnections.com', notes: 'CO, WY, MT', states: ['CO', 'WY', 'MT'] },
   
   // GFL Regions
   { haulerName: 'GFL Region 1', brokerEmail: 'gflnapricingusregion1@gfl.com', notes: 'AL, FL, GA', states: ['AL', 'FL', 'GA'] },

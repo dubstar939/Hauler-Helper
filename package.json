@@ -10,20 +10,11 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@google/genai": "^1.48.0",
-    "@heroicons/react": "^2.2.0",
-    "@supabase/supabase-js": "^2.99.2",
-    "@types/leaflet.markercluster": "^1.5.6",
-    "clsx": "^2.1.1",
-    "leaflet": "1.9.4",
-    "leaflet.markercluster": "^1.5.3",
-    "lucide-react": "^1.7.0",
-    "motion": "^12.38.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "react-markdown": "^10.1.0",
-    "react-quill-new": "^3.8.3",
-    "tailwind-merge": "^3.5.0"
+    "@heroicons/react": "^2.2.0",
+    "react-quill": "^2.0.0",
+    "leaflet": "1.9.4"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

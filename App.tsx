@@ -275,6 +275,27 @@ const App: React.FC = () => {
     return items;
   }, [haulers, sortConfig, sourceFilter, contactSearchQuery, haulerTypeFilter, serviceAreaFilter, brokerList]);
 
+  const handleUpdateBrokerNotes = useCallback((h: Hauler, notes: string) => {
+    const existingIndex = brokerList.findIndex(b => b.brokerEmail.toLowerCase() === h.email.toLowerCase());
+    
+    if (existingIndex !== -1) {
+      setBrokerList(prev => prev.map((b, i) => 
+        i === existingIndex ? { ...b, notes } : b
+      ));
+      setImportFeedback("Notes updated.");
+    } else {
+      const newBroker: BrokerContact = {
+        haulerName: h.name,
+        brokerEmail: h.email,
+        notes: notes,
+        states: []
+      };
+      setBrokerList(prev => [...prev, newBroker]);
+      setImportFeedback(`Added "${h.name}" to database with notes.`);
+    }
+    setTimeout(() => setImportFeedback(null), 3000);
+  }, [brokerList]);
+
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -375,6 +396,9 @@ const App: React.FC = () => {
       sortedHaulers.forEach(h => {
         if (h.coordinates) {
           hasPoints = true;
+          const brokerEntry = brokerList.find(b => b.brokerEmail.toLowerCase() === h.email.toLowerCase());
+          const notesText = brokerEntry?.notes || '';
+
           const marker = L.marker(h.coordinates, {
             icon: L.divIcon({
               className: 'custom-marker',
@@ -385,19 +409,35 @@ const App: React.FC = () => {
           }).addTo(mapInstanceRef.current!);
 
           marker.bindPopup(`
-            <div class="p-2">
+            <div class="p-2 min-w-[220px]">
               <h4 class="font-black text-sm">${h.name}</h4>
               <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-2">${h.contactSource === 'Search' ? 'Web Search' : 'Broker List'}</p>
+              
+              <div class="mb-3">
+                <label class="block text-[9px] font-black uppercase text-gray-400 mb-1">Broker Notes</label>
+                <textarea id="marker-notes-${h.id}" class="w-full text-xs p-2 border border-gray-200 rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none resize-none" rows="3" placeholder="Add contact notes...">${notesText}</textarea>
+                <button id="marker-save-notes-${h.id}" class="mt-1 w-full py-1 bg-gray-800 text-white text-[9px] font-black uppercase rounded hover:bg-black transition">Save Notes</button>
+              </div>
+
               <button id="marker-draft-${h.id}" class="w-full py-1.5 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-lg hover:bg-indigo-700 transition">Draft Email</button>
             </div>
           `);
 
           marker.on('popupopen', () => {
-             const btn = document.getElementById(`marker-draft-${h.id}`);
-             if (btn) {
-               btn.onclick = () => {
+             const draftBtn = document.getElementById(`marker-draft-${h.id}`);
+             if (draftBtn) {
+               draftBtn.onclick = () => {
                  setSelectedHauler(h);
                  setIsDrafting(true);
+               };
+             }
+
+             const saveBtn = document.getElementById(`marker-save-notes-${h.id}`);
+             const notesArea = document.getElementById(`marker-notes-${h.id}`) as HTMLTextAreaElement;
+             if (saveBtn && notesArea) {
+               saveBtn.onclick = () => {
+                 handleUpdateBrokerNotes(h, notesArea.value);
+                 marker.closePopup();
                };
              }
           });

@@ -2,7 +2,12 @@
 export enum HaulerStatus {
   DRAFT = 'Draft',
   SENT = 'Sent',
-  REPLIED = 'Replied'
+  REPLIED = 'Replied',
+  CONTACTED = 'Contacted',
+  BID_SUBMITTED = 'Bid Submitted',
+  NEGOTIATING = 'Negotiating',
+  WON = 'Won',
+  LOST = 'Lost'
 }
 
 export enum HaulerType {
@@ -47,23 +52,6 @@ export interface SavedSearch {
   accountInfo: string;
 }
 
-export enum TaskStatus {
-  PENDING = 'Pending',
-  COMPLETED = 'Completed',
-  OVERDUE = 'Overdue'
-}
-
-export interface Task {
-  id: string;
-  haulerId: string;
-  haulerName: string;
-  title: string;
-  description?: string;
-  dueDate: string;
-  status: TaskStatus;
-  createdAt: string;
-}
-
 export interface Hauler {
   id: string;
   name: string;
@@ -79,6 +67,8 @@ export interface Hauler {
   draftContent?: string;
   attachments: HaulerAttachment[];
   coordinates?: [number, number]; // [lat, lng]
+  followUpDate?: string; // ISO date string
+  followUpTemplateId?: string;
 }
 
 export interface SearchResult {

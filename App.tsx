@@ -56,14 +56,13 @@ import {
 } from '@heroicons/react/24/outline';
 import L from 'leaflet';
 import ReactQuill from 'react-quill';
-import { Hauler, HaulerStatus, HaulerType, BrokerContact, HaulerAttachment, SearchResult, EmailTemplate, SavedSearch, Task, TaskStatus } from './types';
-import { MOCK_BROKERS, BID_TEMPLATE_CURRENT, BID_TEMPLATE_NEW, EMAIL_SIGNATURE, TEMPLATE_MISSED_PICKUP, TEMPLATE_RFQ_COMPACTOR, TEMPLATE_BILLING_INQUIRY } from './constants';
+import { Hauler, HaulerStatus, HaulerType, BrokerContact, HaulerAttachment, SearchResult, EmailTemplate, SavedSearch } from './types';
+import { MOCK_BROKERS, BID_TEMPLATE_CURRENT, BID_TEMPLATE_NEW, EMAIL_SIGNATURE } from './constants';
 
 const SENDER_EMAIL = "chrisw@wasteexperts.com";
 const DB_STORAGE_KEY = 'hauler_hunter_db_v1';
 const TEMPLATE_STORAGE_KEY = 'hauler_hunter_templates_v1';
 const SEARCH_STORAGE_KEY = 'hauler_hunter_saved_searches_v1';
-const TASK_STORAGE_KEY = 'hauler_hunter_tasks_v1';
 
 const PLACEHOLDERS = [
   { key: '{haulerName}', label: 'Hauler Name' },
@@ -94,27 +93,6 @@ const DEFAULT_TEMPLATES: EmailTemplate[] = [
     category: HaulerType.NEW,
     subject: 'New Price Opportunity - Waste & Recycling Services - {address}',
     content: BID_TEMPLATE_NEW
-  },
-  {
-    id: 't-missed-pickup',
-    name: 'Missed Pickup Report',
-    category: HaulerType.CURRENT,
-    subject: 'MISSED PICKUP: {address} - {haulerName}',
-    content: TEMPLATE_MISSED_PICKUP
-  },
-  {
-    id: 't-rfq-compactor',
-    name: 'Compactor RFQ',
-    category: HaulerType.NEW,
-    subject: 'Compactor Quote Request: {address}',
-    content: TEMPLATE_RFQ_COMPACTOR
-  },
-  {
-    id: 't-billing-inquiry',
-    name: 'Billing Inquiry',
-    category: HaulerType.CURRENT,
-    subject: 'Billing Question: {accountInfo} - {address}',
-    content: TEMPLATE_BILLING_INQUIRY
   }
 ];
 
@@ -209,23 +187,6 @@ const App: React.FC = () => {
   });
   const [showSavedSearches, setShowSavedSearches] = useState(false);
 
-  const [tasks, setTasks] = useState<Task[]>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(TASK_STORAGE_KEY);
-      if (saved) {
-        try { return JSON.parse(saved); } catch (e) { console.error(e); }
-      }
-    }
-    return [];
-  });
-  const [isManagingTasks, setIsManagingTasks] = useState(false);
-  const [newTaskData, setNewTaskData] = useState<{ title: string; dueDate: string; haulerId: string; haulerName: string }>({
-    title: '',
-    dueDate: new Date().toISOString().split('T')[0],
-    haulerId: '',
-    haulerName: ''
-  });
-
   const [selectedHauler, setSelectedHauler] = useState<Hauler | null>(null);
   const [isAddingHauler, setIsAddingHauler] = useState(false);
   const [newHaulerData, setNewHaulerData] = useState<BrokerContact>({
@@ -314,6 +275,40 @@ const App: React.FC = () => {
     return items;
   }, [haulers, sortConfig, sourceFilter, contactSearchQuery, haulerTypeFilter, serviceAreaFilter, brokerList]);
 
+  const handleUpdateBrokerInfo = useCallback((h: Hauler, updates: Partial<BrokerContact>) => {
+    const existingIndex = brokerList.findIndex(b => b.brokerEmail.toLowerCase() === h.email.toLowerCase());
+    
+    if (existingIndex !== -1) {
+      setBrokerList(prev => prev.map((b, i) => 
+        i === existingIndex ? { ...b, ...updates } : b
+      ));
+      setImportFeedback("Broker info updated.");
+    } else {
+      const newBroker: BrokerContact = {
+        haulerName: h.name,
+        brokerEmail: h.email,
+        notes: updates.notes || '',
+        secondaryEmail: updates.secondaryEmail || '',
+        states: []
+      };
+      setBrokerList(prev => [...prev, newBroker]);
+      setImportFeedback(`Added "${h.name}" to database.`);
+    }
+    setTimeout(() => setImportFeedback(null), 3000);
+  }, [brokerList]);
+
+  const updateHaulerStatus = (id: string, status: HaulerStatus) => {
+    setHaulers(prev => prev.map(h => h.id === id ? { ...h, status } : h));
+    setImportFeedback(`Status updated to ${status}`);
+    setTimeout(() => setImportFeedback(null), 3000);
+  };
+
+  const scheduleFollowUp = (haulerId: string, date: string, templateId: string) => {
+    setHaulers(prev => prev.map(h => h.id === haulerId ? { ...h, followUpDate: date, followUpTemplateId: templateId } : h));
+    setImportFeedback("Follow-up scheduled.");
+    setTimeout(() => setImportFeedback(null), 3000);
+  };
+
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -321,7 +316,6 @@ const App: React.FC = () => {
         setIsManagingDb(false);
         setIsManagingTemplates(false);
         setIsAddingHauler(false);
-        setIsManagingTasks(false);
         setEditingTemplate(null);
         setShowDbSearchResults(false);
         setEditingBrokerIndex(null);
@@ -343,10 +337,6 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem(SEARCH_STORAGE_KEY, JSON.stringify(savedSearches));
   }, [savedSearches]);
-
-  useEffect(() => {
-    localStorage.setItem(TASK_STORAGE_KEY, JSON.stringify(tasks));
-  }, [tasks]);
 
   useEffect(() => {
     if (isDarkMode) {
@@ -419,6 +409,10 @@ const App: React.FC = () => {
       sortedHaulers.forEach(h => {
         if (h.coordinates) {
           hasPoints = true;
+          const brokerEntry = brokerList.find(b => b.brokerEmail.toLowerCase() === h.email.toLowerCase());
+          const notesText = brokerEntry?.notes || '';
+          const secEmail = brokerEntry?.secondaryEmail || '';
+
           const marker = L.marker(h.coordinates, {
             icon: L.divIcon({
               className: 'custom-marker',
@@ -429,19 +423,45 @@ const App: React.FC = () => {
           }).addTo(mapInstanceRef.current!);
 
           marker.bindPopup(`
-            <div class="p-2">
-              <h4 class="font-black text-sm">${h.name}</h4>
+            <div class="p-2 min-w-[240px]">
+              <h4 class="font-black text-sm text-gray-900">${h.name}</h4>
               <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-2">${h.contactSource === 'Search' ? 'Web Search' : 'Broker List'}</p>
-              <button id="marker-draft-${h.id}" class="w-full py-1.5 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-lg hover:bg-indigo-700 transition">Draft Email</button>
+              
+              <div class="space-y-3 mb-3">
+                <div>
+                  <label class="block text-[9px] font-black uppercase text-gray-400 mb-1">Secondary Email</label>
+                  <input id="marker-sec-email-${h.id}" type="email" class="w-full text-xs p-2 border border-gray-200 rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none" placeholder="Secondary Email" value="${secEmail}" />
+                </div>
+                <div>
+                  <label class="block text-[9px] font-black uppercase text-gray-400 mb-1">Broker Notes</label>
+                  <textarea id="marker-notes-${h.id}" class="w-full text-xs p-2 border border-gray-200 rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none resize-none" rows="2" placeholder="Add contact notes...">${notesText}</textarea>
+                </div>
+                <button id="marker-save-info-${h.id}" class="mt-1 w-full py-1.5 bg-gray-800 text-white text-[9px] font-black uppercase rounded hover:bg-black transition focus:outline-none">Save Info</button>
+              </div>
+
+              <button id="marker-draft-${h.id}" class="w-full py-2 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-lg hover:bg-indigo-700 transition focus:outline-none">Draft Email</button>
             </div>
-          `);
+          `, { className: 'custom-leaflet-popup' });
 
           marker.on('popupopen', () => {
-             const btn = document.getElementById(`marker-draft-${h.id}`);
-             if (btn) {
-               btn.onclick = () => {
+             const draftBtn = document.getElementById(`marker-draft-${h.id}`);
+             if (draftBtn) {
+               draftBtn.onclick = () => {
                  setSelectedHauler(h);
                  setIsDrafting(true);
+               };
+             }
+
+             const saveBtn = document.getElementById(`marker-save-info-${h.id}`);
+             const notesArea = document.getElementById(`marker-notes-${h.id}`) as HTMLTextAreaElement;
+             const secInput = document.getElementById(`marker-sec-email-${h.id}`) as HTMLInputElement;
+             if (saveBtn && notesArea && secInput) {
+               saveBtn.onclick = () => {
+                 handleUpdateBrokerInfo(h, { 
+                   notes: notesArea.value,
+                   secondaryEmail: secInput.value
+                 });
+                 marker.closePopup();
                };
              }
           });
@@ -590,45 +610,6 @@ const App: React.FC = () => {
     if (!selectedHauler) return;
     const updated = selectedHauler.attachments.filter((_, i) => i !== index);
     updateHaulerField(selectedHauler.id, 'attachments', updated);
-  };
-
-  const handleAddTask = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTaskData.title.trim()) return;
-
-    const newTask: Task = {
-      id: `task-${Date.now()}`,
-      haulerId: newTaskData.haulerId,
-      haulerName: newTaskData.haulerName,
-      title: newTaskData.title,
-      dueDate: newTaskData.dueDate,
-      status: TaskStatus.PENDING,
-      createdAt: new Date().toISOString()
-    };
-
-    setTasks(prev => [newTask, ...prev]);
-    setNewTaskData({
-      title: '',
-      dueDate: new Date().toISOString().split('T')[0],
-      haulerId: '',
-      haulerName: ''
-    });
-    setImportFeedback("Task added successfully.");
-    setTimeout(() => setImportFeedback(null), 3000);
-  };
-
-  const handleToggleTaskStatus = (taskId: string) => {
-    setTasks(prev => prev.map(t => {
-      if (t.id === taskId) {
-        const newStatus = t.status === TaskStatus.COMPLETED ? TaskStatus.PENDING : TaskStatus.COMPLETED;
-        return { ...t, status: newStatus };
-      }
-      return t;
-    }));
-  };
-
-  const handleDeleteTask = (taskId: string) => {
-    setTasks(prev => prev.filter(t => t.id !== taskId));
   };
 
   const applyTemplateToDraft = (template: EmailTemplate) => {
@@ -1095,15 +1076,6 @@ const App: React.FC = () => {
                 {isDarkMode ? <SunIcon className="w-5 h-5" /> : <MoonIcon className="w-5 h-5" />}
               </button>
               <button 
-                onClick={() => setIsManagingTasks(true)} 
-                className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-md text-indigo-700 dark:text-indigo-400 text-[10px] font-black uppercase hover:bg-indigo-100 transition shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-500 outline-none"
-              >
-                <ListBulletIcon className="w-4 h-4" aria-hidden="true" /> Tasks
-                {tasks.filter(t => t.status === TaskStatus.PENDING).length > 0 && (
-                  <span className="flex h-2 w-2 rounded-full bg-red-500"></span>
-                )}
-              </button>
-              <button 
                 onClick={() => setIsManagingTemplates(true)} 
                 className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-md text-amber-700 dark:text-amber-400 text-[10px] font-black uppercase hover:bg-amber-100 transition shadow-sm focus-visible:ring-2 focus-visible:ring-amber-500 outline-none"
               >
@@ -1134,6 +1106,14 @@ const App: React.FC = () => {
         <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 mb-8 relative">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-lg font-bold flex items-center gap-2"><MapPinIcon className="w-5 h-5 text-green-600" aria-hidden="true" /> Identify Partners</h2>
+            {haulers.some(h => h.followUpDate && new Date(h.followUpDate) < new Date()) && (
+              <div className="flex-1 mx-8 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-2 flex items-center gap-3 animate-pulse">
+                <ExclamationTriangleIcon className="w-5 h-5 text-amber-600" />
+                <span className="text-xs font-black uppercase text-amber-900 dark:text-amber-400">
+                  {haulers.filter(h => h.followUpDate && new Date(h.followUpDate) < new Date()).length} Follow-ups Overdue
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-4">
               <div className="relative" ref={savedSearchesRef}>
                 <button 
@@ -1378,6 +1358,15 @@ const App: React.FC = () => {
                               <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.type === HaulerType.CURRENT ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
                                 {h.type} Partner
                               </span>
+                              <select 
+                                value={h.status}
+                                onChange={(e) => updateHaulerStatus(h.id, e.target.value as HaulerStatus)}
+                                className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-gray-100 dark:bg-gray-700 border-none outline-none focus:ring-2 focus:ring-green-500 cursor-pointer"
+                              >
+                                {Object.values(HaulerStatus).map((s) => (
+                                  <option key={s} value={s}>{s}</option>
+                                ))}
+                              </select>
                             </div>
                           </div>
                           <div className="flex flex-wrap items-center gap-5 text-sm text-gray-600 dark:text-gray-400">
@@ -1400,26 +1389,6 @@ const App: React.FC = () => {
                         </div>
                         <div className="flex items-center gap-2 w-full md:w-auto border-t md:border-t-0 pt-4 md:pt-0">
                           <div className="flex items-center gap-2 mr-2 border-r border-gray-200 dark:border-gray-700 pr-3">
-                            <button 
-                              onClick={() => {
-                                setNewTaskData({
-                                  title: '',
-                                  dueDate: new Date().toISOString().split('T')[0],
-                                  haulerId: h.id,
-                                  haulerName: h.name
-                                });
-                                setIsManagingTasks(true);
-                              }}
-                              className="p-2.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl hover:bg-indigo-100 transition focus-visible:ring-2 focus-visible:ring-indigo-400 outline-none relative"
-                              title="Add Follow-up Task"
-                            >
-                              <PlusIcon className="w-5 h-5" aria-hidden="true" />
-                              {tasks.filter(t => t.haulerId === h.id && t.status === TaskStatus.PENDING).length > 0 && (
-                                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white dark:border-gray-800">
-                                  {tasks.filter(t => t.haulerId === h.id && t.status === TaskStatus.PENDING).length}
-                                </span>
-                              )}
-                            </button>
                             <button 
                               onClick={() => handleCopyBrokerInfo(h)}
                               className="p-2.5 bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-600 transition focus-visible:ring-2 focus-visible:ring-gray-400 outline-none"
@@ -1458,7 +1427,49 @@ const App: React.FC = () => {
                           >
                             OUTLOOK
                           </button>
+                          <div className="relative group/followup">
+                            <button className="p-2.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-xl hover:bg-amber-100 transition focus:outline-none" title="Schedule Follow-up">
+                              <ClockIcon className="w-5 h-5" />
+                            </button>
+                            <div className="absolute right-0 bottom-full mb-2 hidden group-hover/followup:block group-focus-within/followup:block bg-white dark:bg-gray-800 border-2 border-amber-100 dark:border-amber-800 rounded-2xl shadow-2xl z-20 w-64 p-4 animate-in fade-in slide-in-from-bottom-2">
+                              <h4 className="text-[10px] font-black uppercase text-amber-600 mb-3 tracking-widest">Schedule Follow-up</h4>
+                              <div className="space-y-3">
+                                <div>
+                                  <label className="block text-[9px] font-black text-gray-400 uppercase mb-1">Send Date</label>
+                                  <input 
+                                    type="date" 
+                                    className="w-full text-xs p-2 border border-gray-100 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 outline-none focus:ring-1 focus:ring-amber-500" 
+                                    onChange={(e) => {
+                                      const date = e.target.value;
+                                      if (date) scheduleFollowUp(h.id, date, templates.find(t => t.category === h.type)?.id || templates[0]?.id);
+                                    }}
+                                  />
+                                </div>
+                                <div className="text-[9px] text-gray-500 italic">Selecting a date will pin a reminder to this hauler.</div>
+                              </div>
+                            </div>
+                          </div>
                         </div>
+                        {h.followUpDate && (
+                          <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-100 dark:border-amber-800/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 text-[10px] font-black uppercase text-amber-700 dark:text-amber-400 tracking-wider">
+                              <ClockIcon className="w-4 h-4" /> 
+                              Scheduled Follow-up: {new Date(h.followUpDate).toLocaleDateString()}
+                              {new Date(h.followUpDate) < new Date() && <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded ml-2">Overdue</span>}
+                            </div>
+                            <button 
+                              onClick={() => {
+                                const template = templates.find(t => t.id === h.followUpTemplateId);
+                                if (template) applyTemplateToDraft(template);
+                                setSelectedHauler(h);
+                                setIsDrafting(true);
+                              }}
+                              className="px-3 py-1 bg-amber-600 text-white text-[10px] font-black uppercase rounded-lg hover:bg-amber-700 transition"
+                            >
+                              Follow up now
+                            </button>
+                          </div>
+                        )}
                       </li>
                     );
                   })}
@@ -1864,127 +1875,6 @@ const App: React.FC = () => {
               </div>
               <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-indigo-700 shadow-xl focus-visible:ring-2 focus-visible:ring-indigo-400 outline-none">PERSIST TO DATABASE</button>
             </form>
-          </div>
-        </div>
-      )}
-      {/* Task Management Modal */}
-      {isManagingTasks && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/80 backdrop-blur-md transition-all" role="dialog" aria-modal="true" aria-labelledby="tasks-title">
-          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl w-full max-w-4xl h-[85vh] overflow-hidden border border-white/20 flex flex-col">
-            <div className="bg-gray-50 dark:bg-gray-900/50 px-8 py-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
-              <div>
-                <h3 id="tasks-title" className="text-xl font-black tracking-tight flex items-center gap-2">
-                  <ListBulletIcon className="w-6 h-6 text-indigo-600" /> Task Management
-                </h3>
-                <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mt-1">Track follow-ups and bid deadlines</p>
-              </div>
-              <button onClick={() => setIsManagingTasks(false)} className="text-gray-500 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full focus-visible:ring-2 focus-visible:ring-gray-400 outline-none">
-                <XMarkIcon className="w-7 h-7" aria-hidden="true" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
-              {/* Add Task Sidebar */}
-              <div className="w-full md:w-80 border-r border-gray-100 dark:border-gray-700 p-6 bg-gray-50/30 dark:bg-gray-900/30">
-                <h4 className="text-xs font-black uppercase text-gray-600 dark:text-gray-400 mb-6 tracking-widest">Create New Task</h4>
-                <form onSubmit={handleAddTask} className="space-y-5">
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-gray-500 mb-2">Task Title</label>
-                    <input 
-                      type="text" 
-                      value={newTaskData.title} 
-                      onChange={e => setNewTaskData({...newTaskData, title: e.target.value})}
-                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-bold outline-none focus:border-indigo-500 transition-all"
-                      placeholder="e.g. Follow up on bid"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-gray-500 mb-2">Due Date</label>
-                    <input 
-                      type="date" 
-                      value={newTaskData.dueDate} 
-                      onChange={e => setNewTaskData({...newTaskData, dueDate: e.target.value})}
-                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-bold outline-none focus:border-indigo-500 transition-all"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-gray-500 mb-2">Associate Hauler (Optional)</label>
-                    <select 
-                      value={newTaskData.haulerId}
-                      onChange={e => {
-                        const h = haulers.find(h => h.id === e.target.value);
-                        setNewTaskData({...newTaskData, haulerId: e.target.value, haulerName: h?.name || ''});
-                      }}
-                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-bold outline-none focus:border-indigo-500 transition-all"
-                    >
-                      <option value="">No Hauler</option>
-                      {haulers.map(h => (
-                        <option key={h.id} value={h.id}>{h.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 shadow-lg transition-all">
-                    Create Task
-                  </button>
-                </form>
-              </div>
-
-              {/* Task List */}
-              <div className="flex-1 overflow-y-auto p-8">
-                <div className="flex items-center justify-between mb-8">
-                  <h4 className="text-xs font-black uppercase text-gray-600 dark:text-gray-400 tracking-widest">Active Tasks ({tasks.length})</h4>
-                  <div className="flex gap-2">
-                    {/* Filters could go here */}
-                  </div>
-                </div>
-
-                {tasks.length === 0 ? (
-                  <div className="py-20 text-center">
-                    <CheckCircleIcon className="w-16 h-16 text-gray-200 dark:text-gray-700 mx-auto mb-4" />
-                    <p className="text-gray-400 text-sm font-bold uppercase tracking-widest">No tasks scheduled</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {tasks.map(task => {
-                      const isOverdue = new Date(task.dueDate) < new Date() && task.status !== TaskStatus.COMPLETED;
-                      return (
-                        <div key={task.id} className={`group bg-white dark:bg-gray-900 rounded-2xl border p-5 flex items-center justify-between gap-4 transition-all ${task.status === TaskStatus.COMPLETED ? 'opacity-60 grayscale' : 'hover:border-indigo-300 dark:hover:border-indigo-700 shadow-sm'}`}>
-                          <div className="flex items-center gap-4 flex-1 min-w-0">
-                            <button 
-                              onClick={() => handleToggleTaskStatus(task.id)}
-                              className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${task.status === TaskStatus.COMPLETED ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 dark:border-gray-600 hover:border-indigo-500'}`}
-                            >
-                              {task.status === TaskStatus.COMPLETED && <CheckIcon className="w-4 h-4" />}
-                            </button>
-                            <div className="min-w-0">
-                              <h5 className={`text-sm font-black truncate ${task.status === TaskStatus.COMPLETED ? 'line-through text-gray-400' : ''}`}>{task.title}</h5>
-                              <div className="flex items-center gap-3 mt-1">
-                                <span className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1 ${isOverdue ? 'text-red-500' : 'text-gray-500'}`}>
-                                  <ClockIcon className="w-3 h-3" /> {task.dueDate}
-                                </span>
-                                {task.haulerName && (
-                                  <span className="text-[10px] font-black uppercase tracking-wider text-indigo-500 flex items-center gap-1">
-                                    <UserIcon className="w-3 h-3" /> {task.haulerName}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          <button 
-                            onClick={() => handleDeleteTask(task.id)}
-                            className="p-2 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-                          >
-                            <TrashIcon className="w-5 h-5" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
         </div>
       )}

@@ -2,7 +2,12 @@
 export enum HaulerStatus {
   DRAFT = 'Draft',
   SENT = 'Sent',
-  REPLIED = 'Replied'
+  REPLIED = 'Replied',
+  CONTACTED = 'Contacted',
+  BID_SUBMITTED = 'Bid Submitted',
+  NEGOTIATING = 'Negotiating',
+  WON = 'Won',
+  LOST = 'Lost'
 }
 
 export enum HaulerType {
@@ -62,6 +67,8 @@ export interface Hauler {
   draftContent?: string;
   attachments: HaulerAttachment[];
   coordinates?: [number, number]; // [lat, lng]
+  followUpDate?: string; // ISO date string
+  followUpTemplateId?: string;
 }
 
 export interface SearchResult {

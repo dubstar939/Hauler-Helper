@@ -275,26 +275,39 @@ const App: React.FC = () => {
     return items;
   }, [haulers, sortConfig, sourceFilter, contactSearchQuery, haulerTypeFilter, serviceAreaFilter, brokerList]);
 
-  const handleUpdateBrokerNotes = useCallback((h: Hauler, notes: string) => {
+  const handleUpdateBrokerInfo = useCallback((h: Hauler, updates: Partial<BrokerContact>) => {
     const existingIndex = brokerList.findIndex(b => b.brokerEmail.toLowerCase() === h.email.toLowerCase());
     
     if (existingIndex !== -1) {
       setBrokerList(prev => prev.map((b, i) => 
-        i === existingIndex ? { ...b, notes } : b
+        i === existingIndex ? { ...b, ...updates } : b
       ));
-      setImportFeedback("Notes updated.");
+      setImportFeedback("Broker info updated.");
     } else {
       const newBroker: BrokerContact = {
         haulerName: h.name,
         brokerEmail: h.email,
-        notes: notes,
+        notes: updates.notes || '',
+        secondaryEmail: updates.secondaryEmail || '',
         states: []
       };
       setBrokerList(prev => [...prev, newBroker]);
-      setImportFeedback(`Added "${h.name}" to database with notes.`);
+      setImportFeedback(`Added "${h.name}" to database.`);
     }
     setTimeout(() => setImportFeedback(null), 3000);
   }, [brokerList]);
+
+  const updateHaulerStatus = (id: string, status: HaulerStatus) => {
+    setHaulers(prev => prev.map(h => h.id === id ? { ...h, status } : h));
+    setImportFeedback(`Status updated to ${status}`);
+    setTimeout(() => setImportFeedback(null), 3000);
+  };
+
+  const scheduleFollowUp = (haulerId: string, date: string, templateId: string) => {
+    setHaulers(prev => prev.map(h => h.id === haulerId ? { ...h, followUpDate: date, followUpTemplateId: templateId } : h));
+    setImportFeedback("Follow-up scheduled.");
+    setTimeout(() => setImportFeedback(null), 3000);
+  };
 
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
@@ -398,6 +411,7 @@ const App: React.FC = () => {
           hasPoints = true;
           const brokerEntry = brokerList.find(b => b.brokerEmail.toLowerCase() === h.email.toLowerCase());
           const notesText = brokerEntry?.notes || '';
+          const secEmail = brokerEntry?.secondaryEmail || '';
 
           const marker = L.marker(h.coordinates, {
             icon: L.divIcon({
@@ -409,19 +423,25 @@ const App: React.FC = () => {
           }).addTo(mapInstanceRef.current!);
 
           marker.bindPopup(`
-            <div class="p-2 min-w-[220px]">
-              <h4 class="font-black text-sm">${h.name}</h4>
+            <div class="p-2 min-w-[240px]">
+              <h4 class="font-black text-sm text-gray-900">${h.name}</h4>
               <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-2">${h.contactSource === 'Search' ? 'Web Search' : 'Broker List'}</p>
               
-              <div class="mb-3">
-                <label class="block text-[9px] font-black uppercase text-gray-400 mb-1">Broker Notes</label>
-                <textarea id="marker-notes-${h.id}" class="w-full text-xs p-2 border border-gray-200 rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none resize-none" rows="3" placeholder="Add contact notes...">${notesText}</textarea>
-                <button id="marker-save-notes-${h.id}" class="mt-1 w-full py-1 bg-gray-800 text-white text-[9px] font-black uppercase rounded hover:bg-black transition">Save Notes</button>
+              <div class="space-y-3 mb-3">
+                <div>
+                  <label class="block text-[9px] font-black uppercase text-gray-400 mb-1">Secondary Email</label>
+                  <input id="marker-sec-email-${h.id}" type="email" class="w-full text-xs p-2 border border-gray-200 rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none" placeholder="Secondary Email" value="${secEmail}" />
+                </div>
+                <div>
+                  <label class="block text-[9px] font-black uppercase text-gray-400 mb-1">Broker Notes</label>
+                  <textarea id="marker-notes-${h.id}" class="w-full text-xs p-2 border border-gray-200 rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none resize-none" rows="2" placeholder="Add contact notes...">${notesText}</textarea>
+                </div>
+                <button id="marker-save-info-${h.id}" class="mt-1 w-full py-1.5 bg-gray-800 text-white text-[9px] font-black uppercase rounded hover:bg-black transition focus:outline-none">Save Info</button>
               </div>
 
-              <button id="marker-draft-${h.id}" class="w-full py-1.5 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-lg hover:bg-indigo-700 transition">Draft Email</button>
+              <button id="marker-draft-${h.id}" class="w-full py-2 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-lg hover:bg-indigo-700 transition focus:outline-none">Draft Email</button>
             </div>
-          `);
+          `, { className: 'custom-leaflet-popup' });
 
           marker.on('popupopen', () => {
              const draftBtn = document.getElementById(`marker-draft-${h.id}`);
@@ -432,11 +452,15 @@ const App: React.FC = () => {
                };
              }
 
-             const saveBtn = document.getElementById(`marker-save-notes-${h.id}`);
+             const saveBtn = document.getElementById(`marker-save-info-${h.id}`);
              const notesArea = document.getElementById(`marker-notes-${h.id}`) as HTMLTextAreaElement;
-             if (saveBtn && notesArea) {
+             const secInput = document.getElementById(`marker-sec-email-${h.id}`) as HTMLInputElement;
+             if (saveBtn && notesArea && secInput) {
                saveBtn.onclick = () => {
-                 handleUpdateBrokerNotes(h, notesArea.value);
+                 handleUpdateBrokerInfo(h, { 
+                   notes: notesArea.value,
+                   secondaryEmail: secInput.value
+                 });
                  marker.closePopup();
                };
              }
@@ -1082,6 +1106,14 @@ const App: React.FC = () => {
         <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 mb-8 relative">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-lg font-bold flex items-center gap-2"><MapPinIcon className="w-5 h-5 text-green-600" aria-hidden="true" /> Identify Partners</h2>
+            {haulers.some(h => h.followUpDate && new Date(h.followUpDate) < new Date()) && (
+              <div className="flex-1 mx-8 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-2 flex items-center gap-3 animate-pulse">
+                <ExclamationTriangleIcon className="w-5 h-5 text-amber-600" />
+                <span className="text-xs font-black uppercase text-amber-900 dark:text-amber-400">
+                  {haulers.filter(h => h.followUpDate && new Date(h.followUpDate) < new Date()).length} Follow-ups Overdue
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-4">
               <div className="relative" ref={savedSearchesRef}>
                 <button 
@@ -1326,6 +1358,15 @@ const App: React.FC = () => {
                               <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.type === HaulerType.CURRENT ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
                                 {h.type} Partner
                               </span>
+                              <select 
+                                value={h.status}
+                                onChange={(e) => updateHaulerStatus(h.id, e.target.value as HaulerStatus)}
+                                className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-gray-100 dark:bg-gray-700 border-none outline-none focus:ring-2 focus:ring-green-500 cursor-pointer"
+                              >
+                                {Object.values(HaulerStatus).map((s) => (
+                                  <option key={s} value={s}>{s}</option>
+                                ))}
+                              </select>
                             </div>
                           </div>
                           <div className="flex flex-wrap items-center gap-5 text-sm text-gray-600 dark:text-gray-400">
@@ -1386,7 +1427,49 @@ const App: React.FC = () => {
                           >
                             OUTLOOK
                           </button>
+                          <div className="relative group/followup">
+                            <button className="p-2.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-xl hover:bg-amber-100 transition focus:outline-none" title="Schedule Follow-up">
+                              <ClockIcon className="w-5 h-5" />
+                            </button>
+                            <div className="absolute right-0 bottom-full mb-2 hidden group-hover/followup:block group-focus-within/followup:block bg-white dark:bg-gray-800 border-2 border-amber-100 dark:border-amber-800 rounded-2xl shadow-2xl z-20 w-64 p-4 animate-in fade-in slide-in-from-bottom-2">
+                              <h4 className="text-[10px] font-black uppercase text-amber-600 mb-3 tracking-widest">Schedule Follow-up</h4>
+                              <div className="space-y-3">
+                                <div>
+                                  <label className="block text-[9px] font-black text-gray-400 uppercase mb-1">Send Date</label>
+                                  <input 
+                                    type="date" 
+                                    className="w-full text-xs p-2 border border-gray-100 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 outline-none focus:ring-1 focus:ring-amber-500" 
+                                    onChange={(e) => {
+                                      const date = e.target.value;
+                                      if (date) scheduleFollowUp(h.id, date, templates.find(t => t.category === h.type)?.id || templates[0]?.id);
+                                    }}
+                                  />
+                                </div>
+                                <div className="text-[9px] text-gray-500 italic">Selecting a date will pin a reminder to this hauler.</div>
+                              </div>
+                            </div>
+                          </div>
                         </div>
+                        {h.followUpDate && (
+                          <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-100 dark:border-amber-800/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 text-[10px] font-black uppercase text-amber-700 dark:text-amber-400 tracking-wider">
+                              <ClockIcon className="w-4 h-4" /> 
+                              Scheduled Follow-up: {new Date(h.followUpDate).toLocaleDateString()}
+                              {new Date(h.followUpDate) < new Date() && <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded ml-2">Overdue</span>}
+                            </div>
+                            <button 
+                              onClick={() => {
+                                const template = templates.find(t => t.id === h.followUpTemplateId);
+                                if (template) applyTemplateToDraft(template);
+                                setSelectedHauler(h);
+                                setIsDrafting(true);
+                              }}
+                              className="px-3 py-1 bg-amber-600 text-white text-[10px] font-black uppercase rounded-lg hover:bg-amber-700 transition"
+                            >
+                              Follow up now
+                            </button>
+                          </div>
+                        )}
                       </li>
                     );
                   })}

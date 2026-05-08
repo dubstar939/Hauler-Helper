@@ -202,6 +202,9 @@ const App: React.FC = () => {
   const [isManagingTemplates, setIsManagingTemplates] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
   
+  const [selectedHaulerIds, setSelectedHaulerIds] = useState<string[]>([]);
+  const [dbStatus, setDbStatus] = useState<'Synced' | 'Out of Date' | 'Saving...'>('Synced');
+
   // Database Editing State
   const [editingBrokerIndex, setEditingBrokerIndex] = useState<number | null>(null);
   const [editEmailValue, setEditEmailValue] = useState('');
@@ -294,8 +297,31 @@ const App: React.FC = () => {
       setBrokerList(prev => [...prev, newBroker]);
       setImportFeedback(`Added "${h.name}" to database.`);
     }
+    setImportFeedback("Broker info updated.");
+    setDbStatus('Out of Date');
     setTimeout(() => setImportFeedback(null), 3000);
   }, [brokerList]);
+
+  const toggleHaulerSelection = (id: string) => {
+    setSelectedHaulerIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleBulkEmail = () => {
+    const selectedHaulers = haulers.filter(h => selectedHaulerIds.includes(h.id));
+    if (selectedHaulers.length === 0) return;
+    
+    // In a real app, this might open a bulk composer or iterate through mailto links
+    // For this prototype, we'll demonstrate the selection by alerting the emails
+    const emails = selectedHaulers.map(h => h.email).join('; ');
+    const addressToUse = facilityAddress || location || "Facility Address";
+    const subject = `Bulk Inquiry - Waste & Recycling Services - ${addressToUse}`;
+    
+    window.location.href = `mailto:${emails}?subject=${encodeURIComponent(subject)}`;
+    setImportFeedback(`Drafted bulk email for ${selectedHaulers.length} haulers.`);
+    setTimeout(() => setImportFeedback(null), 3000);
+  };
 
   const updateHaulerStatus = (id: string, status: HaulerStatus) => {
     setHaulers(prev => prev.map(h => h.id === id ? { ...h, status } : h));
@@ -327,7 +353,12 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(brokerList));
+    setDbStatus('Saving...');
+    const timer = setTimeout(() => {
+      localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(brokerList));
+      setDbStatus('Synced');
+    }, 800);
+    return () => clearTimeout(timer);
   }, [brokerList]);
 
   useEffect(() => {
@@ -424,7 +455,13 @@ const App: React.FC = () => {
 
           marker.bindPopup(`
             <div class="p-2 min-w-[240px]">
-              <h4 class="font-black text-sm text-gray-900">${h.name}</h4>
+              <div class="flex justify-between items-start mb-1">
+                <h4 class="font-black text-sm text-gray-900 truncate pr-2">${h.name}</h4>
+                <div class="flex flex-col items-end shrink-0">
+                  <span class="text-[8px] font-black uppercase text-blue-600 bg-blue-50 px-1 rounded-sm mb-0.5">${h.type}</span>
+                  <span class="text-[8px] font-black uppercase text-green-600 bg-green-50 px-1 rounded-sm">${h.status}</span>
+                </div>
+              </div>
               <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-2">${h.contactSource === 'Search' ? 'Web Search' : 'Broker List'}</p>
               
               <div class="space-y-3 mb-3">
@@ -1064,6 +1101,14 @@ const App: React.FC = () => {
                 <div className="flex items-center gap-1.5 text-[10px] text-gray-600 dark:text-gray-400 font-bold uppercase tracking-wider">
                   <span className={`w-1.5 h-1.5 rounded-full ${isOutlookConnected ? 'bg-green-500' : 'bg-red-500'} animate-pulse`} aria-hidden="true"></span>
                   Account: {SENDER_EMAIL}
+                  <span className="mx-2 text-gray-300">|</span>
+                  <span className={`flex items-center gap-1 ${
+                    dbStatus === 'Saving...' ? 'text-amber-500' : 
+                    dbStatus === 'Out of Date' ? 'text-red-500' : 'text-green-500'
+                  }`}>
+                    <div className={`w-1 h-1 rounded-full bg-current ${dbStatus === 'Saving...' ? 'animate-ping' : ''}`}></div>
+                    DB: {dbStatus}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1290,14 +1335,34 @@ const App: React.FC = () => {
           </section>
         )}
 
-        {haulers.length > 0 && !isSearching && (
+            {haulers.length > 0 && !isSearching && (
           <section className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-4 mb-2 px-1">
-              <nav className="flex flex-wrap gap-2" aria-label="Source filters">
-                <SourceFilterButton label="All Identified" value="all" icon={MagnifyingGlassIcon} />
-                <SourceFilterButton label="Web Search" value="Search" icon={SparklesIcon} />
-                <SourceFilterButton label="Broker List" value="Broker List" icon={ServerIcon} />
-              </nav>
+              <div className="flex items-center gap-4">
+                <nav className="flex flex-wrap gap-2" aria-label="Source filters">
+                  <SourceFilterButton label="All Identified" value="all" icon={MagnifyingGlassIcon} />
+                  <SourceFilterButton label="Web Search" value="Search" icon={SparklesIcon} />
+                  <SourceFilterButton label="Broker List" value="Broker List" icon={ServerIcon} />
+                </nav>
+                
+                {selectedHaulerIds.length > 0 && (
+                  <div className="flex items-center gap-2 border-l border-gray-200 dark:border-gray-700 pl-4 animate-in fade-in slide-in-from-left duration-200">
+                    <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400">{selectedHaulerIds.length} Selected</span>
+                    <button 
+                      onClick={handleBulkEmail}
+                      className="px-3 py-1 bg-indigo-600 text-white text-[10px] font-black uppercase rounded hover:bg-indigo-700 transition shadow-sm flex items-center gap-1.5"
+                    >
+                      <PaperAirplaneIcon className="w-3 h-3" /> Bulk Email
+                    </button>
+                    <button 
+                      onClick={() => setSelectedHaulerIds([])}
+                      className="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 text-[10px] font-black uppercase rounded hover:bg-gray-200 transition"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+              </div>
               <div className="flex items-center gap-3">
                 <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700">
                   <button 
@@ -1336,12 +1401,25 @@ const App: React.FC = () => {
                 <ul className="space-y-4">
                   {sortedHaulers.map((h) => {
                     const inDb = isHaulerInDb(h.email);
+                    const isSelected = selectedHaulerIds.includes(h.id);
                     return (
-                      <li key={h.id} className="bg-white dark:bg-gray-800 rounded-2xl border p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm border-gray-100 dark:border-gray-700 hover:border-green-300/50 hover:shadow-md transition-all group">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3 mb-2">
-                            <h3 className="text-lg font-black truncate tracking-tight">{h.name}</h3>
-                            <div className="flex gap-2">
+                      <li key={h.id} className={`bg-white dark:bg-gray-800 rounded-2xl border p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm transition-all group ${
+                        isSelected ? 'border-indigo-400 ring-1 ring-indigo-400' : 'border-gray-100 dark:border-gray-700 hover:border-green-300/50 hover:shadow-md'
+                      }`}>
+                        <div className="flex items-start gap-4 flex-1 min-w-0">
+                          <div className="pt-1.5 shrink-0">
+                            <input 
+                              type="checkbox" 
+                              checked={isSelected}
+                              onChange={() => toggleHaulerSelection(h.id)}
+                              className="w-5 h-5 rounded-md border-2 border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-all"
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-3 mb-2">
+                              <h3 className="text-lg font-black truncate tracking-tight">{h.name}</h3>
+                            </div>
+                            <div className="flex gap-2 mb-2">
                               <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.contactSource === 'Broker List' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'}`}>
                                 {h.contactSource === 'Broker List' ? 'Broker List' : 'Web Search'}
                               </span>

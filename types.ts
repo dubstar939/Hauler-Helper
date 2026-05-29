@@ -78,3 +78,12 @@ export interface SearchResult {
   snippet: string;
   sources?: { title: string; uri: string }[];
 }
+
+export interface RecentAction {
+  id: string;
+  haulerId: string;
+  haulerName: string;
+  actionType: 'draft_processed' | 'status_changed';
+  details: string;
+  timestamp: string;
+}

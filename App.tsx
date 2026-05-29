@@ -52,11 +52,12 @@ import {
   KeyIcon,
   ListBulletIcon,
   CommandLineIcon,
-  ClipboardIcon
+  ClipboardIcon,
+  ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
 import L from 'leaflet';
 import ReactQuill from 'react-quill';
-import { Hauler, HaulerStatus, HaulerType, BrokerContact, HaulerAttachment, SearchResult, EmailTemplate, SavedSearch } from './types';
+import { Hauler, HaulerStatus, HaulerType, BrokerContact, HaulerAttachment, SearchResult, EmailTemplate, SavedSearch, RecentAction } from './types';
 import { MOCK_BROKERS, BID_TEMPLATE_CURRENT, BID_TEMPLATE_NEW, EMAIL_SIGNATURE } from './constants';
 
 const SENDER_EMAIL = "chrisw@wasteexperts.com";
@@ -204,6 +205,42 @@ const App: React.FC = () => {
   
   const [selectedHaulerIds, setSelectedHaulerIds] = useState<string[]>([]);
   const [dbStatus, setDbStatus] = useState<'Synced' | 'Out of Date' | 'Saving...'>('Synced');
+  const [recentActions, setRecentActions] = useState<RecentAction[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('hauler_hunter_recent_actions');
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) { console.error(e); }
+      }
+    }
+    return [];
+  });
+
+  const addRecentAction = useCallback((haulerId: string, haulerName: string, actionType: 'draft_processed' | 'status_changed', details: string) => {
+    setRecentActions(prev => {
+      const newAction: RecentAction = {
+        id: `action-${Date.now()}-${Math.random()}`,
+        haulerId,
+        haulerName,
+        actionType,
+        details,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      const updated = [newAction, ...prev].slice(0, 5);
+      localStorage.setItem('hauler_hunter_recent_actions', JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  const handleRecentActionClick = (action: RecentAction) => {
+    const found = haulers.find(h => h.id === action.haulerId);
+    if (found) {
+      setSelectedHauler(found);
+      setIsDrafting(true);
+    } else {
+      setImportFeedback(`Hauler "${action.haulerName}" not in current search results.`);
+      setTimeout(() => setImportFeedback(null), 3000);
+    }
+  };
 
   // Database Editing State
   const [editingBrokerIndex, setEditingBrokerIndex] = useState<number | null>(null);
@@ -323,8 +360,58 @@ const App: React.FC = () => {
     setTimeout(() => setImportFeedback(null), 3000);
   };
 
+  const downloadCSV = () => {
+    if (sortedHaulers.length === 0) {
+      alert("No haulers to download.");
+      return;
+    }
+    
+    // Header row
+    const headers = ["Hauler Name", "Primary Email", "Secondary Email", "Type", "Status", "Contact Source", "Location", "Last Action Date", "Notes"];
+    
+    // Construct rows
+    const rows = sortedHaulers.map(h => {
+      const broker = brokerList.find(b => b.brokerEmail.toLowerCase() === h.email.toLowerCase());
+      const notes = broker?.notes || '';
+      const secondaryEmail = broker?.secondaryEmail || h.secondaryEmail || '';
+      
+      return [
+        h.name,
+        h.email,
+        secondaryEmail,
+        h.type,
+        h.status,
+        h.contactSource,
+        h.location,
+        h.lastActionDate,
+        notes
+      ].map(val => {
+        const cleanVal = typeof val === 'string' ? val.replace(/"/g, '""') : '';
+        return `"${cleanVal}"`;
+      }).join(',');
+    });
+    
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `hauler_hunter_results_${new Date().toISOString().slice(0,10)}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    setImportFeedback("CSV results downloaded successfully.");
+    setTimeout(() => setImportFeedback(null), 3000);
+  };
+
   const updateHaulerStatus = (id: string, status: HaulerStatus) => {
     setHaulers(prev => prev.map(h => h.id === id ? { ...h, status } : h));
+    const hObj = haulers.find(x => x.id === id);
+    if (hObj) {
+      addRecentAction(id, hObj.name, 'status_changed', `Status set to ${status}`);
+    }
     setImportFeedback(`Status updated to ${status}`);
     setTimeout(() => setImportFeedback(null), 3000);
   };
@@ -1048,6 +1135,7 @@ const App: React.FC = () => {
     const body = encodeURIComponent(plainTextBody);
     window.location.href = `mailto:${hauler.email}?subject=${subject}&body=${body}`;
     setHaulers(prev => prev.map(h => h.id === hauler.id ? { ...h, status: HaulerStatus.SENT, lastActionDate: new Date().toLocaleDateString() } : h));
+    addRecentAction(hauler.id, hauler.name, 'draft_processed', 'Email draft processed');
     setIsDrafting(false);
   };
 
@@ -1364,6 +1452,12 @@ const App: React.FC = () => {
                 )}
               </div>
               <div className="flex items-center gap-3">
+                <button 
+                  onClick={downloadCSV}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 rounded-xl text-[10px] font-black uppercase hover:bg-green-100 dark:hover:bg-green-900/30 transition shadow-sm focus-visible:ring-2 focus-visible:ring-green-500 outline-none"
+                >
+                  <ArrowDownTrayIcon className="w-3.5 h-3.5" /> Export CSV
+                </button>
                 <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700">
                   <button 
                     onClick={() => setViewMode('list')}
@@ -1380,182 +1474,228 @@ const App: React.FC = () => {
                     <GlobeAltIcon className="w-5 h-5" />
                   </button>
                 </div>
-                <div className="text-[10px] font-black uppercase text-gray-600 dark:text-gray-400 tracking-widest">
+                <div className="text-[10px] font-black uppercase text-gray-600 dark:text-gray-400 tracking-widest animate-fade-in">
                   Showing {sortedHaulers.length} of {haulers.length} results
                 </div>
               </div>
             </div>
 
-            {viewMode === 'map' ? (
-              <div className="w-full h-[600px] bg-gray-200 dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-inner overflow-hidden animate-in fade-in zoom-in duration-300">
-                <div ref={mapContainerRef} className="w-full h-full" />
-              </div>
-            ) : (
-              sortedHaulers.length === 0 ? (
-                <div className="py-20 text-center bg-gray-50/50 dark:bg-gray-800/50 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700" role="status">
-                  <NoSymbolIcon className="w-12 h-12 text-gray-400 mx-auto mb-3" aria-hidden="true" />
-                  <h3 className="text-gray-600 dark:text-gray-400 font-bold uppercase text-xs tracking-widest">No partners match current filters</h3>
-                  <button onClick={handleResetFilters} className="mt-4 text-indigo-600 dark:text-indigo-400 text-xs font-black uppercase hover:underline">Clear all filters</button>
-                </div>
-              ) : (
-                <ul className="space-y-4">
-                  {sortedHaulers.map((h) => {
-                    const inDb = isHaulerInDb(h.email);
-                    const isSelected = selectedHaulerIds.includes(h.id);
-                    return (
-                      <li key={h.id} className={`bg-white dark:bg-gray-800 rounded-2xl border p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm transition-all group ${
-                        isSelected ? 'border-indigo-400 ring-1 ring-indigo-400' : 'border-gray-100 dark:border-gray-700 hover:border-green-300/50 hover:shadow-md'
-                      }`}>
-                        <div className="flex items-start gap-4 flex-1 min-w-0">
-                          <div className="pt-1.5 shrink-0">
-                            <input 
-                              type="checkbox" 
-                              checked={isSelected}
-                              onChange={() => toggleHaulerSelection(h.id)}
-                              className="w-5 h-5 rounded-md border-2 border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-all"
-                            />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-3 mb-2">
-                              <h3 className="text-lg font-black truncate tracking-tight">{h.name}</h3>
-                            </div>
-                            <div className="flex gap-2 mb-2">
-                              <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.contactSource === 'Broker List' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'}`}>
-                                {h.contactSource === 'Broker List' ? 'Broker List' : 'Web Search'}
-                              </span>
-                              {h.contactSource === 'Search' && (
-                                <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 flex items-center gap-1">
-                                  <SparklesIcon className="w-2.5 h-2.5" /> Verified
-                                </span>
-                              )}
-                              {inDb && (
-                                <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex items-center gap-1">
-                                  <CheckBadgeIcon className="w-2.5 h-2.5" /> In Database
-                                </span>
-                              )}
-                              <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.type === HaulerType.CURRENT ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
-                                {h.type} Partner
-                              </span>
-                              <select 
-                                value={h.status}
-                                onChange={(e) => updateHaulerStatus(h.id, e.target.value as HaulerStatus)}
-                                className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-gray-100 dark:bg-gray-700 border-none outline-none focus:ring-2 focus:ring-green-500 cursor-pointer"
-                              >
-                                {Object.values(HaulerStatus).map((s) => (
-                                  <option key={s} value={s}>{s}</option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-5 text-sm text-gray-600 dark:text-gray-400">
-                            <div className="flex items-center gap-2">
-                              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-800">
-                                <EnvelopeIcon className="w-4 h-4 text-gray-500" aria-hidden="true" /> 
-                                <span className="font-semibold text-gray-900 dark:text-gray-100">{h.email}</span>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              <div className="lg:col-span-9 space-y-4">
+                {viewMode === 'map' ? (
+                  <div className="w-full h-[600px] bg-gray-200 dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-inner overflow-hidden animate-in fade-in zoom-in duration-300">
+                    <div ref={mapContainerRef} className="w-full h-full" />
+                  </div>
+                ) : (
+                  sortedHaulers.length === 0 ? (
+                    <div className="py-20 text-center bg-gray-50/50 dark:bg-gray-800/50 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700" role="status">
+                      <NoSymbolIcon className="w-12 h-12 text-gray-400 mx-auto mb-3" aria-hidden="true" />
+                      <h3 className="text-gray-600 dark:text-gray-400 font-bold uppercase text-xs tracking-widest">No partners match current filters</h3>
+                      <button onClick={handleResetFilters} className="mt-4 text-indigo-600 dark:text-indigo-400 text-xs font-black uppercase hover:underline">Clear all filters</button>
+                    </div>
+                  ) : (
+                    <ul className="space-y-4">
+                      {sortedHaulers.map((h) => {
+                        const inDb = isHaulerInDb(h.email);
+                        const isSelected = selectedHaulerIds.includes(h.id);
+                        return (
+                          <li key={h.id} className={`bg-white dark:bg-gray-800 rounded-2xl border p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm transition-all group ${
+                            isSelected ? 'border-indigo-400 ring-1 ring-indigo-400' : 'border-gray-100 dark:border-gray-700 hover:border-green-300/50 hover:shadow-md'
+                          }`}>
+                            <div className="flex items-start gap-4 flex-1 min-w-0">
+                              <div className="pt-1.5 shrink-0">
+                                <input 
+                                  type="checkbox" 
+                                  checked={isSelected}
+                                  onChange={() => toggleHaulerSelection(h.id)}
+                                  className="w-5 h-5 rounded-md border-2 border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-all"
+                                />
                               </div>
-                              <button 
-                                onClick={() => handleCopyEmail(h.email)}
-                                className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest border border-transparent hover:border-blue-200 dark:hover:border-blue-800"
-                                title="Copy Email Address"
-                              >
-                                <ClipboardIcon className="w-4 h-4" /> Copy Email
-                              </button>
-                            </div>
-                            {h.website && <a href={h.website} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold hover:underline focus-visible:underline outline-none"><GlobeAltIcon className="w-4 h-4" aria-hidden="true" /> Link</a>}
-                            <div className="flex items-center gap-1.5"><MapPinIcon className="w-4 h-4" aria-hidden="true" /> <span className="truncate max-w-[200px] text-xs font-medium">{h.location}</span></div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 w-full md:w-auto border-t md:border-t-0 pt-4 md:pt-0">
-                          <div className="flex items-center gap-2 mr-2 border-r border-gray-200 dark:border-gray-700 pr-3">
-                            <button 
-                              onClick={() => handleCopyBrokerInfo(h)}
-                              className="p-2.5 bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-600 transition focus-visible:ring-2 focus-visible:ring-gray-400 outline-none"
-                              title="Copy Full Broker Info"
-                              aria-label={`Copy info for ${h.name}`}
-                            >
-                              <ClipboardDocumentIcon className="w-5 h-5" aria-hidden="true" />
-                            </button>
-                            {h.contactSource === 'Search' && !inDb && (
-                              <button 
-                                onClick={() => handleAddToDatabase(h)}
-                                className="flex items-center gap-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-xl hover:bg-emerald-100 transition focus-visible:ring-2 focus-visible:ring-emerald-400 outline-none text-[10px] font-black uppercase tracking-wider border border-emerald-100 dark:border-emerald-800"
-                                title="Add to Database"
-                                aria-label={`Save ${h.name} to database`}
-                              >
-                                <PlusCircleIcon className="w-5 h-5" aria-hidden="true" /> Add to DB
-                              </button>
-                            )}
-                          </div>
-                          <button 
-                            onClick={() => handleDeleteHauler(h)} 
-                            className="p-2.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-100 transition focus-visible:ring-2 focus-visible:ring-red-400 outline-none"
-                            aria-label={`Remove ${h.name} from list`}
-                          >
-                            <TrashIcon className="w-5 h-5" aria-hidden="true" />
-                          </button>
-                          <button 
-                            onClick={() => { setSelectedHauler(h); setIsDrafting(true); }} 
-                            className="px-5 py-2.5 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-xl text-sm font-black flex items-center gap-2 hover:bg-green-100 transition shadow-sm focus-visible:ring-2 focus-visible:ring-green-400 outline-none"
-                          >
-                            <PencilSquareIcon className="w-4 h-4" aria-hidden="true" /> DRAFT
-                          </button>
-                          <button 
-                            onClick={() => initiateOutlookSend(h)} 
-                            className="px-8 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-black hover:bg-blue-700 shadow-lg transition-all focus-visible:ring-2 focus-visible:ring-blue-400 outline-none"
-                          >
-                            OUTLOOK
-                          </button>
-                          <div className="relative group/followup">
-                            <button className="p-2.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-xl hover:bg-amber-100 transition focus:outline-none" title="Schedule Follow-up">
-                              <ClockIcon className="w-5 h-5" />
-                            </button>
-                            <div className="absolute right-0 bottom-full mb-2 hidden group-hover/followup:block group-focus-within/followup:block bg-white dark:bg-gray-800 border-2 border-amber-100 dark:border-amber-800 rounded-2xl shadow-2xl z-20 w-64 p-4 animate-in fade-in slide-in-from-bottom-2">
-                              <h4 className="text-[10px] font-black uppercase text-amber-600 mb-3 tracking-widest">Schedule Follow-up</h4>
-                              <div className="space-y-3">
-                                <div>
-                                  <label className="block text-[9px] font-black text-gray-400 uppercase mb-1">Send Date</label>
-                                  <input 
-                                    type="date" 
-                                    className="w-full text-xs p-2 border border-gray-100 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 outline-none focus:ring-1 focus:ring-amber-500" 
-                                    onChange={(e) => {
-                                      const date = e.target.value;
-                                      if (date) scheduleFollowUp(h.id, date, templates.find(t => t.category === h.type)?.id || templates[0]?.id);
-                                    }}
-                                  />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-3 mb-2">
+                                  <h3 className="text-lg font-black truncate tracking-tight">{h.name}</h3>
                                 </div>
-                                <div className="text-[9px] text-gray-500 italic">Selecting a date will pin a reminder to this hauler.</div>
+                                <div className="flex gap-2 mb-2">
+                                  <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.contactSource === 'Broker List' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'}`}>
+                                    {h.contactSource === 'Broker List' ? 'Broker List' : 'Web Search'}
+                                  </span>
+                                  {h.contactSource === 'Search' && (
+                                    <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 flex items-center gap-1">
+                                      <SparklesIcon className="w-2.5 h-2.5" /> Verified
+                                    </span>
+                                  )}
+                                  {inDb && (
+                                    <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex items-center gap-1">
+                                      <CheckBadgeIcon className="w-2.5 h-2.5" /> In Database
+                                    </span>
+                                  )}
+                                  <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.type === HaulerType.CURRENT ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+                                    {h.type} Partner
+                                  </span>
+                                  <select 
+                                    value={h.status}
+                                    onChange={(e) => updateHaulerStatus(h.id, e.target.value as HaulerStatus)}
+                                    className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-gray-100 dark:bg-gray-700 border-none outline-none focus:ring-2 focus:ring-green-500 cursor-pointer"
+                                  >
+                                    {Object.values(HaulerStatus).map((s) => (
+                                      <option key={s} value={s}>{s}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-5 text-sm text-gray-600 dark:text-gray-400">
+                                <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-800">
+                                    <EnvelopeIcon className="w-4 h-4 text-gray-500" aria-hidden="true" /> 
+                                    <span className="font-semibold text-gray-900 dark:text-gray-100">{h.email}</span>
+                                  </div>
+                                  <button 
+                                    onClick={() => handleCopyEmail(h.email)}
+                                    className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest border border-transparent hover:border-blue-200 dark:hover:border-blue-800"
+                                    title="Copy Email Address"
+                                  >
+                                    <ClipboardIcon className="w-4 h-4" /> Copy Email
+                                  </button>
+                                </div>
+                                {h.website && <a href={h.website} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold hover:underline focus-visible:underline outline-none"><GlobeAltIcon className="w-4 h-4" aria-hidden="true" /> Link</a>}
+                                <div className="flex items-center gap-1.5"><MapPinIcon className="w-4 h-4" aria-hidden="true" /> <span className="truncate max-w-[200px] text-xs font-medium">{h.location}</span></div>
                               </div>
                             </div>
-                          </div>
-                        </div>
-                        {h.followUpDate && (
-                          <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-100 dark:border-amber-800/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-                            <div className="flex items-center gap-2 text-[10px] font-black uppercase text-amber-700 dark:text-amber-400 tracking-wider">
-                              <ClockIcon className="w-4 h-4" /> 
-                              Scheduled Follow-up: {new Date(h.followUpDate).toLocaleDateString()}
-                              {new Date(h.followUpDate) < new Date() && <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded ml-2">Overdue</span>}
+                            <div className="flex items-center gap-2 w-full md:w-auto border-t md:border-t-0 pt-4 md:pt-0">
+                              <div className="flex items-center gap-2 mr-2 border-r border-gray-200 dark:border-gray-700 pr-3">
+                                <button 
+                                  onClick={() => handleCopyBrokerInfo(h)}
+                                  className="p-2.5 bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-600 transition focus-visible:ring-2 focus-visible:ring-gray-400 outline-none"
+                                  title="Copy Full Broker Info"
+                                  aria-label={`Copy info for ${h.name}`}
+                                >
+                                  <ClipboardDocumentIcon className="w-5 h-5" aria-hidden="true" />
+                                </button>
+                                {h.contactSource === 'Search' && !inDb && (
+                                  <button 
+                                    onClick={() => handleAddToDatabase(h)}
+                                    className="flex items-center gap-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-xl hover:bg-emerald-100 transition focus-visible:ring-2 focus-visible:ring-emerald-400 outline-none text-[10px] font-black uppercase tracking-wider border border-emerald-100 dark:border-emerald-800"
+                                    title="Add to Database"
+                                    aria-label={`Save ${h.name} to database`}
+                                  >
+                                    <PlusCircleIcon className="w-5 h-5" aria-hidden="true" /> Add to DB
+                                  </button>
+                                )}
+                              </div>
+                              <button 
+                                onClick={() => handleDeleteHauler(h)} 
+                                className="p-2.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-100 transition focus-visible:ring-2 focus-visible:ring-red-400 outline-none"
+                                aria-label={`Remove ${h.name} from list`}
+                              >
+                                <TrashIcon className="w-5 h-5" aria-hidden="true" />
+                              </button>
+                              <button 
+                                onClick={() => { setSelectedHauler(h); setIsDrafting(true); }} 
+                                className="px-5 py-2.5 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-xl text-sm font-black flex items-center gap-2 hover:bg-green-100 transition shadow-sm focus-visible:ring-2 focus-visible:ring-green-400 outline-none"
+                              >
+                                <PencilSquareIcon className="w-4 h-4" aria-hidden="true" /> DRAFT
+                              </button>
+                              <button 
+                                onClick={() => initiateOutlookSend(h)} 
+                                className="px-8 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-black hover:bg-blue-700 shadow-lg transition-all focus-visible:ring-2 focus-visible:ring-blue-400 outline-none"
+                              >
+                                OUTLOOK
+                              </button>
+                              <div className="relative group/followup">
+                                <button className="p-2.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-xl hover:bg-amber-100 transition focus:outline-none" title="Schedule Follow-up">
+                                  <ClockIcon className="w-5 h-5" />
+                                </button>
+                                <div className="absolute right-0 bottom-full mb-2 hidden group-hover/followup:block group-focus-within/followup:block bg-white dark:bg-gray-800 border-2 border-amber-100 dark:border-amber-800 rounded-2xl shadow-2xl z-20 w-64 p-4 animate-in fade-in slide-in-from-bottom-2">
+                                  <h4 className="text-[10px] font-black uppercase text-amber-600 mb-3 tracking-widest">Schedule Follow-up</h4>
+                                  <div className="space-y-3">
+                                    <div>
+                                      <label className="block text-[9px] font-black text-gray-400 uppercase mb-1">Send Date</label>
+                                      <input 
+                                        type="date" 
+                                        className="w-full text-xs p-2 border border-gray-100 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 outline-none focus:ring-1 focus:ring-amber-500" 
+                                        onChange={(e) => {
+                                          const date = e.target.value;
+                                          if (date) scheduleFollowUp(h.id, date, templates.find(t => t.category === h.type)?.id || templates[0]?.id);
+                                        }}
+                                      />
+                                    </div>
+                                    <div className="text-[9px] text-gray-500 italic">Selecting a date will pin a reminder to this hauler.</div>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
-                            <button 
-                              onClick={() => {
-                                const template = templates.find(t => t.id === h.followUpTemplateId);
-                                if (template) applyTemplateToDraft(template);
-                                setSelectedHauler(h);
-                                setIsDrafting(true);
-                              }}
-                              className="px-3 py-1 bg-amber-600 text-white text-[10px] font-black uppercase rounded-lg hover:bg-amber-700 transition"
-                            >
-                              Follow up now
-                            </button>
-                          </div>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )
-            )}
+                            {h.followUpDate && (
+                              <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-100 dark:border-amber-800/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+                                <div className="flex items-center gap-2 text-[10px] font-black uppercase text-amber-700 dark:text-amber-400 tracking-wider">
+                                  <ClockIcon className="w-4 h-4" /> 
+                                  Scheduled Follow-up: {new Date(h.followUpDate).toLocaleDateString()}
+                                  {new Date(h.followUpDate) < new Date() && <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded ml-2">Overdue</span>}
+                                </div>
+                                <button 
+                                  onClick={() => {
+                                    const template = templates.find(t => t.id === h.followUpTemplateId);
+                                    if (template) applyTemplateToDraft(template);
+                                    setSelectedHauler(h);
+                                    setIsDrafting(true);
+                                  }}
+                                  className="px-3 py-1 bg-amber-600 text-white text-[10px] font-black uppercase rounded-lg hover:bg-amber-700 transition"
+                                >
+                                  Follow up now
+                                </button>
+                              </div>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )
+                )}
+              </div>
 
-            {/* Intelligence Sources Section Removed */}
+              <aside className="lg:col-span-3 space-y-6">
+                <div className="bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 p-6 shadow-md">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-4 flex items-center gap-2.5">
+                    <ClockIcon className="w-4 h-4 text-indigo-500" /> Recent Actions
+                  </h3>
+                  {recentActions.length === 0 ? (
+                    <div className="text-center py-8 text-xs text-gray-400 dark:text-gray-500 italic">
+                      No actions recorded yet. Send email drafts or change hauler statuses to build history.
+                    </div>
+                  ) : (
+                    <ul className="divide-y divide-gray-100 dark:divide-gray-700/50">
+                      {recentActions.map(action => (
+                        <li 
+                          key={action.id} 
+                          onClick={() => handleRecentActionClick(action)}
+                          className="py-3 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/20 cursor-pointer rounded-xl px-2 -mx-2 transition-all duration-200 group flex flex-col gap-1.5"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-extrabold text-[13px] text-gray-900 dark:text-white truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                              {action.haulerName}
+                            </span>
+                            <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap shrink-0">
+                              {action.timestamp}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[11px] text-gray-500 dark:text-gray-400 truncate font-semibold">
+                              {action.details}
+                            </span>
+                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md tracking-wider shrink-0 shadow-sm ${
+                              action.actionType === 'draft_processed' 
+                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' 
+                                : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                            }`}>
+                              {action.actionType === 'draft_processed' ? 'Email' : 'Status'}
+                            </span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </aside>
+            </div>
           </section>
         )}
       </main>

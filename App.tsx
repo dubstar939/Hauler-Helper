@@ -248,6 +248,32 @@ const App: React.FC = () => {
   const [editStatesValue, setEditStatesValue] = useState('');
 
   const [dbSearchQuery, setDbSearchQuery] = useState('');
+  const [recentLocations, setRecentLocations] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('hauler_hunter_recent_locations');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) return parsed;
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+    return ["Dallas, TX", "Houston, TX", "Newburyport, MA", "Orlando, FL", "Chicago, IL"];
+  });
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  const recordSearchLocation = useCallback((loc: string) => {
+    const cleanLoc = loc.trim();
+    if (!cleanLoc) return;
+    setRecentLocations(prev => {
+      const filtered = prev.filter(l => l.toLowerCase() !== cleanLoc.toLowerCase());
+      const updated = [cleanLoc, ...filtered].slice(0, 15);
+      localStorage.setItem('hauler_hunter_recent_locations', JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
   const [isOutlookConnected, setIsOutlookConnected] = useState(true); 
   const [importFeedback, setImportFeedback] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'name', direction: 'asc' });
@@ -269,6 +295,7 @@ const App: React.FC = () => {
   const dbSearchRef = useRef<HTMLDivElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const savedSearchesRef = useRef<HTMLDivElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
   const templateSubjectRef = useRef<HTMLInputElement>(null);
   const templateBodyRef = useRef<HTMLTextAreaElement>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -484,6 +511,9 @@ const App: React.FC = () => {
       }
       if (savedSearchesRef.current && !savedSearchesRef.current.contains(event.target as Node)) {
         setShowSavedSearches(false);
+      }
+      if (suggestionsRef.current && !suggestionsRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -996,6 +1026,7 @@ const App: React.FC = () => {
 
   const handleLocalSearch = () => {
     if (!location) return;
+    recordSearchLocation(location);
     setIsSearching(true);
     setSearchStatus("Querying Internal Broker Registry...");
     setSearchPhase(1);
@@ -1016,6 +1047,7 @@ const App: React.FC = () => {
 
   const handleDeepSearch = () => {
     if (!location) return;
+    recordSearchLocation(location);
     setIsSearching(true);
     setSearchStatus("Performing Deep Registry Scan...");
     setSearchPhase(1);
@@ -1297,13 +1329,59 @@ const App: React.FC = () => {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
-            <div className="md:col-span-3">
+            <div className="md:col-span-3 relative" ref={suggestionsRef}>
               <label htmlFor="search-area" className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase mb-1.5 tracking-wider">Search Area (City & State)</label>
               <input 
-                id="search-area" type="text" value={location} onChange={(e) => setLocation(e.target.value)} 
+                id="search-area" 
+                type="text" 
+                value={location} 
+                onChange={(e) => {
+                  setLocation(e.target.value);
+                  setShowSuggestions(true);
+                }} 
+                onFocus={() => setShowSuggestions(true)}
                 placeholder="e.g. Dallas, TX" 
-                className="w-full rounded-xl border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-4 py-3 border outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all" 
+                className="w-full rounded-xl border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-4 py-3 border outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all font-semibold" 
+                autoComplete="off"
               />
+              {showSuggestions && recentLocations.length > 0 && (
+                <div className="absolute left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+                  <div className="p-2 border-b border-gray-50 dark:border-gray-700/50 flex justify-between items-center bg-gray-50 dark:bg-gray-900/30">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500 flex items-center gap-1.5">
+                      <ClockIcon className="w-3 h-3 text-indigo-500" /> Recent Locations
+                    </span>
+                    <button 
+                      type="button"
+                      onClick={() => setShowSuggestions(false)}
+                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors p-0.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <XMarkIcon className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <ul className="max-h-56 overflow-y-auto divide-y divide-gray-50 dark:divide-gray-700/50">
+                    {recentLocations
+                      .filter(loc => !location.trim() || loc.toLowerCase().includes(location.toLowerCase().trim()))
+                      .map((loc, idx) => (
+                        <li 
+                          key={idx} 
+                          onMouseDown={() => {
+                            setLocation(loc);
+                            setShowSuggestions(false);
+                          }} 
+                          className="px-4 py-2.5 text-xs text-gray-700 dark:text-gray-200 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/40 cursor-pointer flex items-center gap-2 group transition-colors duration-150"
+                        >
+                          <MapPinIcon className="w-4 h-4 text-gray-400 group-hover:text-indigo-500 transition-colors" />
+                          <span className="font-semibold group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{loc}</span>
+                        </li>
+                      ))}
+                    {recentLocations.filter(loc => !location.trim() || loc.toLowerCase().includes(location.toLowerCase().trim())).length === 0 && (
+                      <li className="px-4 py-3 text-xs text-gray-400 italic text-center">
+                        No matches found
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              )}
             </div>
             <div className="md:col-span-3">
               <label htmlFor="facility-address" className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase mb-1.5 tracking-wider">Facility Address</label>

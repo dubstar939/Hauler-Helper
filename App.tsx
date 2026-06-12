@@ -1511,54 +1511,54 @@ const App: React.FC = () => {
                                   className="w-5 h-5 rounded-md border-2 border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer transition-all"
                                 />
                               </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-3 mb-2">
-                                  <h3 className="text-lg font-black truncate tracking-tight">{h.name}</h3>
-                                </div>
-                                <div className="flex gap-2 mb-2">
-                                  <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.contactSource === 'Broker List' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'}`}>
-                                    {h.contactSource === 'Broker List' ? 'Broker List' : 'Web Search'}
-                                  </span>
-                                  {h.contactSource === 'Search' && (
-                                    <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 flex items-center gap-1">
-                                      <SparklesIcon className="w-2.5 h-2.5" /> Verified
+                              <div className="flex-1 min-w-0 space-y-3">
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <h3 className="text-lg font-black truncate tracking-tight text-gray-900 dark:text-white">{h.name || "Hauler Candidate"}</h3>
+                                  <div className="flex flex-wrap gap-2">
+                                    <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.contactSource === 'Broker List' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'}`}>
+                                      {h.contactSource === 'Broker List' ? 'Broker List' : 'Web Search'}
                                     </span>
-                                  )}
-                                  {inDb && (
-                                    <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex items-center gap-1">
-                                      <CheckBadgeIcon className="w-2.5 h-2.5" /> In Database
+                                    {h.contactSource === 'Search' && (
+                                      <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 flex items-center gap-1">
+                                        <SparklesIcon className="w-2.5 h-2.5" /> Verified
+                                      </span>
+                                    )}
+                                    {inDb && (
+                                      <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex items-center gap-1">
+                                        <CheckBadgeIcon className="w-2.5 h-2.5" /> In Database
+                                      </span>
+                                    )}
+                                    <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.type === HaulerType.CURRENT ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+                                      {h.type} Partner
                                     </span>
-                                  )}
-                                  <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.type === HaulerType.CURRENT ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
-                                    {h.type} Partner
-                                  </span>
-                                  <select 
-                                    value={h.status}
-                                    onChange={(e) => updateHaulerStatus(h.id, e.target.value as HaulerStatus)}
-                                    className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-gray-100 dark:bg-gray-700 border-none outline-none focus:ring-2 focus:ring-green-500 cursor-pointer"
-                                  >
-                                    {Object.values(HaulerStatus).map((s) => (
-                                      <option key={s} value={s}>{s}</option>
-                                    ))}
-                                  </select>
-                                </div>
-                              </div>
-                              <div className="flex flex-wrap items-center gap-5 text-sm text-gray-600 dark:text-gray-400">
-                                <div className="flex items-center gap-2">
-                                  <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-800">
-                                    <EnvelopeIcon className="w-4 h-4 text-gray-500" aria-hidden="true" /> 
-                                    <span className="font-semibold text-gray-900 dark:text-gray-100">{h.email}</span>
+                                    <select 
+                                      value={h.status}
+                                      onChange={(e) => updateHaulerStatus(h.id, e.target.value as HaulerStatus)}
+                                      className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-gray-100 dark:bg-gray-700 dark:text-white border-none outline-none focus:ring-2 focus:ring-green-500 cursor-pointer"
+                                    >
+                                      {Object.values(HaulerStatus).map((s) => (
+                                        <option key={s} value={s}>{s}</option>
+                                      ))}
+                                    </select>
                                   </div>
-                                  <button 
-                                    onClick={() => handleCopyEmail(h.email)}
-                                    className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest border border-transparent hover:border-blue-200 dark:hover:border-blue-800"
-                                    title="Copy Email Address"
-                                  >
-                                    <ClipboardIcon className="w-4 h-4" /> Copy Email
-                                  </button>
                                 </div>
-                                {h.website && <a href={h.website} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold hover:underline focus-visible:underline outline-none"><GlobeAltIcon className="w-4 h-4" aria-hidden="true" /> Link</a>}
-                                <div className="flex items-center gap-1.5"><MapPinIcon className="w-4 h-4" aria-hidden="true" /> <span className="truncate max-w-[200px] text-xs font-medium">{h.location}</span></div>
+                                <div className="flex flex-wrap items-center gap-5 text-sm text-gray-600 dark:text-gray-400">
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-800">
+                                      <EnvelopeIcon className="w-4 h-4 text-gray-500" aria-hidden="true" /> 
+                                      <span className="font-semibold text-gray-900 dark:text-gray-100">{h.email}</span>
+                                    </div>
+                                    <button 
+                                      onClick={() => handleCopyEmail(h.email)}
+                                      className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest border border-transparent hover:border-blue-200 dark:hover:border-blue-800"
+                                      title="Copy Email Address"
+                                    >
+                                      <ClipboardIcon className="w-4 h-4" /> Copy Email
+                                    </button>
+                                  </div>
+                                  {h.website && <a href={h.website} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold hover:underline focus-visible:underline outline-none"><GlobeAltIcon className="w-4 h-4" aria-hidden="true" /> Link</a>}
+                                  <div className="flex items-center gap-1.5"><MapPinIcon className="w-4 h-4" aria-hidden="true" /> <span className="truncate max-w-[200px] text-xs font-medium">{h.location}</span></div>
+                                </div>
                               </div>
                             </div>
                             <div className="flex items-center gap-2 w-full md:w-auto border-t md:border-t-0 pt-4 md:pt-0">

@@ -133,6 +133,46 @@ const htmlToPlainText = (html: string): string => {
   return temp.textContent || temp.innerText || "";
 };
 
+/**
+ * Calculates duration since last contacted date
+ */
+const getDurationSinceLastAction = (lastActionStr: string | undefined): string => {
+  if (!lastActionStr) return 'Never Contacted';
+  try {
+    const parts = lastActionStr.split('/');
+    let actionDate: Date;
+    if (parts.length === 3) {
+      const month = parseInt(parts[0], 10) - 1;
+      const day = parseInt(parts[1], 10);
+      const year = parseInt(parts[2], 10);
+      actionDate = new Date(year, month, day);
+    } else {
+      actionDate = new Date(lastActionStr);
+    }
+    
+    if (isNaN(actionDate.getTime())) return 'Never Contacted';
+    
+    const now = new Date();
+    const actionDateZero = new Date(actionDate.getFullYear(), actionDate.getMonth(), actionDate.getDate());
+    const nowZero = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const diffTime = nowZero.getTime() - actionDateZero.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0) return 'Scheduled';
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays}d ago`;
+    if (diffDays < 30) {
+      const weeks = Math.floor(diffDays / 7);
+      return `${weeks}w ago`;
+    }
+    const months = Math.floor(diffDays / 30);
+    return `${months}mo ago`;
+  } catch (e) {
+    return 'Never Contacted';
+  }
+};
+
 const App: React.FC = () => {
   const [location, setLocation] = useState('');
   const [facilityAddress, setFacilityAddress] = useState('');
@@ -341,6 +381,17 @@ const App: React.FC = () => {
     });
     return items;
   }, [haulers, sortConfig, sourceFilter, contactSearchQuery, haulerTypeFilter, serviceAreaFilter, brokerList]);
+
+  const duplicateEmails = useMemo(() => {
+    const counts: Record<string, number> = {};
+    sortedHaulers.forEach(h => {
+      if (h.email) {
+        const cleanEmail = h.email.toLowerCase().trim();
+        counts[cleanEmail] = (counts[cleanEmail] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [sortedHaulers]);
 
   const handleUpdateBrokerInfo = useCallback((h: Hauler, updates: Partial<BrokerContact>) => {
     const existingIndex = brokerList.findIndex(b => b.brokerEmail.toLowerCase() === h.email.toLowerCase());
@@ -1171,6 +1222,44 @@ const App: React.FC = () => {
     setIsDrafting(false);
   };
 
+  const handleQuickSend = (h: Hauler) => {
+    const addressToUse = facilityAddress || location || "Facility Address";
+    const template = templates.find(t => t.category === h.type) || templates[0];
+    
+    const defaultSubject = h.type === HaulerType.CURRENT 
+      ? `Retaining Bid for Client ${clientRef || 'xxxx.xxxx.xxxxx'} - ${h.name}`
+      : `New Price Opportunity - Waste & Recycling Services - ${addressToUse}`;
+    
+    const rawTemplateSubject = template ? template.subject : defaultSubject;
+    const rawTemplateContent = template ? template.content : (h.type === HaulerType.CURRENT ? BID_TEMPLATE_CURRENT : BID_TEMPLATE_NEW);
+
+    const subjectText = rawTemplateSubject
+      .replace(/{haulerName}/g, h.name || '')
+      .replace(/{address}/g, addressToUse)
+      .replace(/{location}/g, h.location || location || "Specified Area")
+      .replace(/{clientRef}/g, clientRef || "xxxx.xxxx.xxxxx")
+      .replace(/{accountInfo}/g, accountInfo || "ACCOUNT NAME (ACC #)")
+      .replace(/{signature}/g, EMAIL_SIGNATURE.trim());
+
+    const contentText = rawTemplateContent
+      .replace(/{haulerName}/g, h.name || '')
+      .replace(/{address}/g, addressToUse)
+      .replace(/{location}/g, h.location || location || "Specified Area")
+      .replace(/{clientRef}/g, clientRef || "xxxx.xxxx.xxxxx")
+      .replace(/{accountInfo}/g, accountInfo || "ACCOUNT NAME (ACC #)")
+      .replace(/{signature}/g, EMAIL_SIGNATURE.trim());
+
+    const subject = encodeURIComponent(subjectText);
+    const plainTextBody = htmlToPlainText(contentText);
+    const body = encodeURIComponent(plainTextBody);
+    
+    window.location.href = `mailto:${h.email}?subject=${subject}&body=${body}`;
+    setHaulers(prev => prev.map(item => item.id === h.id ? { ...item, status: HaulerStatus.SENT, lastActionDate: new Date().toLocaleDateString() } : item));
+    addRecentAction(h.id, h.name, 'draft_processed', 'Quick Send Email triggered');
+    setImportFeedback(`Quick Send email drafted for ${h.name}`);
+    setTimeout(() => setImportFeedback(null), 3000);
+  };
+
   const SourceFilterButton = ({ label, value, icon: Icon }: { label: string, value: typeof sourceFilter, icon: any }) => {
     const isActive = sourceFilter === value;
     return (
@@ -1576,6 +1665,7 @@ const App: React.FC = () => {
                       {sortedHaulers.map((h) => {
                         const inDb = isHaulerInDb(h.email);
                         const isSelected = selectedHaulerIds.includes(h.id);
+                        const isEmailDuplicate = h.email && (duplicateEmails[h.email.toLowerCase().trim()] > 1);
                         return (
                           <li key={h.id} className={`bg-white dark:bg-gray-800 rounded-2xl border p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm transition-all group ${
                             isSelected ? 'border-indigo-400 ring-1 ring-indigo-400' : 'border-gray-100 dark:border-gray-700 hover:border-green-300/50 hover:shadow-md'
@@ -1604,6 +1694,11 @@ const App: React.FC = () => {
                                     {inDb && (
                                       <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex items-center gap-1">
                                         <CheckBadgeIcon className="w-2.5 h-2.5" /> In Database
+                                      </span>
+                                    )}
+                                    {isEmailDuplicate && (
+                                      <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 flex items-center gap-1 border border-red-200 dark:border-red-800 animate-pulse" title="XXXX-001: Redundancy Warning - This email is present in multiple entries of current search results">
+                                        <ExclamationTriangleIcon className="w-2.5 h-2.5 text-red-500" /> Redundant (XXXX-001)
                                       </span>
                                     )}
                                     <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${h.type === HaulerType.CURRENT ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
@@ -1636,6 +1731,11 @@ const App: React.FC = () => {
                                   </div>
                                   {h.website && <a href={h.website} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-bold hover:underline focus-visible:underline outline-none"><GlobeAltIcon className="w-4 h-4" aria-hidden="true" /> Link</a>}
                                   <div className="flex items-center gap-1.5"><MapPinIcon className="w-4 h-4" aria-hidden="true" /> <span className="truncate max-w-[200px] text-xs font-medium">{h.location}</span></div>
+                                  <div className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800/60 rounded-lg shadow-sm">
+                                    <ClockIcon className="w-3.5 h-3.5 text-gray-400" aria-hidden="true" />
+                                    <span className="text-gray-500 dark:text-gray-400">Last Contacted:</span>
+                                    <span className="text-gray-900 dark:text-gray-100 font-extrabold">{getDurationSinceLastAction(h.lastActionDate)}</span>
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -1672,6 +1772,13 @@ const App: React.FC = () => {
                                 className="px-5 py-2.5 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-xl text-sm font-black flex items-center gap-2 hover:bg-green-100 transition shadow-sm focus-visible:ring-2 focus-visible:ring-green-400 outline-none"
                               >
                                 <PencilSquareIcon className="w-4 h-4" aria-hidden="true" /> DRAFT
+                              </button>
+                              <button 
+                                onClick={() => handleQuickSend(h)} 
+                                className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-black flex items-center gap-2 shadow-md hover:shadow-lg transition-all focus-visible:ring-2 focus-visible:ring-amber-400 outline-none"
+                                title="Instantly trigger Outlook email using default/customized template"
+                              >
+                                <PaperAirplaneIcon className="w-4 h-4" aria-hidden="true" /> QUICK SEND
                               </button>
                               <button 
                                 onClick={() => initiateOutlookSend(h)} 

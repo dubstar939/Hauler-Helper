@@ -1079,7 +1079,7 @@ const App: React.FC = () => {
             <div className="flex items-center gap-3">
               <div className="bg-green-600 p-2 rounded-lg" aria-hidden="true"><TrashIcon className="w-6 h-6 text-white" /></div>
               <div>
-                <h1 className="text-xl font-bold tracking-tight">Hauler Hunter</h1>
+                <h1 className="text-xl font-bold tracking-tight">BIDSENSE</h1>
                 <div className="flex items-center gap-1.5 text-[10px] text-gray-600 dark:text-gray-400 font-bold uppercase tracking-wider">
                   <span className={`w-1.5 h-1.5 rounded-full ${isOutlookConnected ? 'bg-green-500' : 'bg-red-500'} animate-pulse`} aria-hidden="true"></span>
                   Account: {SENDER_EMAIL}

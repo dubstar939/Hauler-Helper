@@ -173,6 +173,25 @@ const getDurationSinceLastAction = (lastActionStr: string | undefined): string =
   }
 };
 
+const getMarkerColorClass = (status: HaulerStatus): string => {
+  switch (status) {
+    case HaulerStatus.DRAFT:
+      return 'bg-green-600';
+    case HaulerStatus.SENT:
+      return 'bg-blue-600';
+    case HaulerStatus.REPLIED:
+    case HaulerStatus.WON:
+      return 'bg-emerald-500';
+    case HaulerStatus.CONTACTED:
+    case HaulerStatus.NEGOTIATING:
+    case HaulerStatus.BID_SUBMITTED:
+      return 'bg-amber-500';
+    case HaulerStatus.LOST:
+    default:
+      return 'bg-gray-500';
+  }
+};
+
 const App: React.FC = () => {
   const [location, setLocation] = useState('');
   const [facilityAddress, setFacilityAddress] = useState('');
@@ -327,6 +346,8 @@ const App: React.FC = () => {
     return false;
   });
   const [searchRadius, setSearchRadius] = useState<number | ''>('');
+  const [searchCenterCoords, setSearchCenterCoords] = useState<[number, number] | null>(null);
+  const circleRef = useRef<L.Circle | null>(null);
   const [globalAttachments] = useState<HaulerAttachment[]>([
     { name: 'Standard_Bid_Template.pdf', size: 245000, type: 'application/pdf' }
   ]);
@@ -599,88 +620,196 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (viewMode === 'map' && mapInstanceRef.current) {
-      markersRef.current.forEach(m => m.remove());
-      markersRef.current = [];
+      const map = mapInstanceRef.current;
 
-      const bounds = L.latLngBounds([]);
-      let hasPoints = false;
+      const updateLayers = () => {
+        // Clear existing markers
+        markersRef.current.forEach(m => m.remove());
+        markersRef.current = [];
 
-      sortedHaulers.forEach(h => {
-        if (h.coordinates) {
-          hasPoints = true;
-          const brokerEntry = brokerList.find(b => b.brokerEmail.toLowerCase() === h.email.toLowerCase());
-          const notesText = brokerEntry?.notes || '';
-          const secEmail = brokerEntry?.secondaryEmail || '';
-
-          const marker = L.marker(h.coordinates, {
-            icon: L.divIcon({
-              className: 'custom-marker',
-              html: `<div class="bg-green-600 w-8 h-8 rounded-full border-4 border-white shadow-xl flex items-center justify-center text-white"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></div>`,
-              iconSize: [32, 32],
-              iconAnchor: [16, 32]
-            })
-          }).addTo(mapInstanceRef.current!);
-
-          marker.bindPopup(`
-            <div class="p-2 min-w-[240px]">
-              <div class="flex justify-between items-start mb-1">
-                <h4 class="font-black text-sm text-gray-900 truncate pr-2">${h.name}</h4>
-                <div class="flex flex-col items-end shrink-0">
-                  <span class="text-[8px] font-black uppercase text-blue-600 bg-blue-50 px-1 rounded-sm mb-0.5">${h.type}</span>
-                  <span class="text-[8px] font-black uppercase text-green-600 bg-green-50 px-1 rounded-sm">${h.status}</span>
-                </div>
-              </div>
-              <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-2">${h.contactSource === 'Search' ? 'Web Search' : 'Broker List'}</p>
-              
-              <div class="space-y-3 mb-3">
-                <div>
-                  <label class="block text-[9px] font-black uppercase text-gray-400 mb-1">Secondary Email</label>
-                  <input id="marker-sec-email-${h.id}" type="email" class="w-full text-xs p-2 border border-gray-200 rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none" placeholder="Secondary Email" value="${secEmail}" />
-                </div>
-                <div>
-                  <label class="block text-[9px] font-black uppercase text-gray-400 mb-1">Broker Notes</label>
-                  <textarea id="marker-notes-${h.id}" class="w-full text-xs p-2 border border-gray-200 rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none resize-none" rows="2" placeholder="Add contact notes...">${notesText}</textarea>
-                </div>
-                <button id="marker-save-info-${h.id}" class="mt-1 w-full py-1.5 bg-gray-800 text-white text-[9px] font-black uppercase rounded hover:bg-black transition focus:outline-none">Save Info</button>
-              </div>
-
-              <button id="marker-draft-${h.id}" class="w-full py-2 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-lg hover:bg-indigo-700 transition focus:outline-none">Draft Email</button>
-            </div>
-          `, { className: 'custom-leaflet-popup' });
-
-          marker.on('popupopen', () => {
-             const draftBtn = document.getElementById(`marker-draft-${h.id}`);
-             if (draftBtn) {
-               draftBtn.onclick = () => {
-                 setSelectedHauler(h);
-                 setIsDrafting(true);
-               };
-             }
-
-             const saveBtn = document.getElementById(`marker-save-info-${h.id}`);
-             const notesArea = document.getElementById(`marker-notes-${h.id}`) as HTMLTextAreaElement;
-             const secInput = document.getElementById(`marker-sec-email-${h.id}`) as HTMLInputElement;
-             if (saveBtn && notesArea && secInput) {
-               saveBtn.onclick = () => {
-                 handleUpdateBrokerInfo(h, { 
-                   notes: notesArea.value,
-                   secondaryEmail: secInput.value
-                 });
-                 marker.closePopup();
-               };
-             }
-          });
-
-          markersRef.current.push(marker);
-          bounds.extend(h.coordinates);
+        // Clear existing circle
+        if (circleRef.current) {
+          circleRef.current.remove();
+          circleRef.current = null;
         }
-      });
 
-      if (hasPoints) {
-        mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
-      }
+        // Draw Search Radius Circle (meters scale)
+        if (searchCenterCoords && searchRadius) {
+          const radiusInMeters = Number(searchRadius) * 1609.344;
+          const circleColor = isDarkMode ? '#10B981' : '#4F46E5';
+          const circle = L.circle(searchCenterCoords, {
+            radius: radiusInMeters,
+            color: circleColor,
+            fillColor: circleColor,
+            fillOpacity: 0.12,
+            weight: 2,
+            dashArray: '4, 4'
+          }).addTo(map);
+          circleRef.current = circle;
+        }
+
+        // Clustering Logic (Projected Screen coordinates clustering)
+        const clusteringRadius = 60; // Pixels
+        const clusters: {
+          id: string;
+          centroid: [number, number];
+          haulers: Hauler[];
+        }[] = [];
+
+        sortedHaulers.forEach(h => {
+          if (!h.coordinates) return;
+          const latLng = L.latLng(h.coordinates);
+          const point = map.latLngToLayerPoint(latLng);
+
+          let addedToCluster = false;
+          for (const cluster of clusters) {
+            const clusterLatLng = L.latLng(cluster.centroid);
+            const clusterPoint = map.latLngToLayerPoint(clusterLatLng);
+            const distance = point.distanceTo(clusterPoint);
+            
+            if (distance < clusteringRadius) {
+              cluster.haulers.push(h);
+              // Recalculate average centroid
+              const count = cluster.haulers.length;
+              const sumLat = cluster.haulers.reduce((s, item) => s + item.coordinates![0], 0);
+              const sumLng = cluster.haulers.reduce((s, item) => s + item.coordinates![1], 0);
+              cluster.centroid = [sumLat / count, sumLng / count];
+              addedToCluster = true;
+              break;
+            }
+          }
+
+          if (!addedToCluster) {
+            clusters.push({
+              id: `cluster-${h.id}`,
+              centroid: h.coordinates,
+              haulers: [h]
+            });
+          }
+        });
+
+        // Add Markers and Cluster Pins to the map
+        const bounds = L.latLngBounds([]);
+        let hasAnyMarkers = false;
+
+        clusters.forEach(cluster => {
+          if (cluster.haulers.length === 1) {
+            const h = cluster.haulers[0];
+            const markerColor = getMarkerColorClass(h.status);
+            
+            const marker = L.marker(h.coordinates!, {
+              icon: L.divIcon({
+                className: 'custom-marker',
+                html: `<div class="${markerColor} w-8 h-8 rounded-full border-4 border-white shadow-xl flex items-center justify-center text-white cursor-pointer hover:scale-110 transition-transform duration-100"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></div>`,
+                iconSize: [32, 32],
+                iconAnchor: [16, 32]
+              })
+            }).addTo(map);
+
+            const brokerEntry = brokerList.find(b => b.brokerEmail.toLowerCase() === h.email.toLowerCase());
+            const notesText = brokerEntry?.notes || '';
+            const secEmail = brokerEntry?.secondaryEmail || '';
+
+            marker.bindPopup(`
+              <div class="p-2 min-w-[240px]">
+                <div class="flex justify-between items-start mb-1">
+                  <h4 class="font-black text-sm text-gray-900 truncate pr-2">${h.name}</h4>
+                  <div class="flex flex-col items-end shrink-0">
+                    <span class="text-[8px] font-black uppercase text-blue-600 bg-blue-50 px-1 rounded-sm mb-0.5">${h.type}</span>
+                    <span class="text-[8px] font-black uppercase text-green-600 bg-green-50 px-1 rounded-sm">${h.status}</span>
+                  </div>
+                </div>
+                <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-2">${h.contactSource === 'Search' ? 'Web Search' : 'Broker List'}</p>
+                
+                <div class="space-y-3 mb-3">
+                  <div>
+                    <label class="block text-[9px] font-black uppercase text-gray-400 mb-1">Secondary Email</label>
+                    <input id="marker-sec-email-${h.id}" type="email" class="w-full text-xs p-2 border border-gray-200 rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none" placeholder="Secondary Email" value="${secEmail}" />
+                  </div>
+                  <div>
+                    <label class="block text-[9px] font-black uppercase text-gray-400 mb-1">Broker Notes</label>
+                    <textarea id="marker-notes-${h.id}" class="w-full text-xs p-2 border border-gray-200 rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none resize-none" rows="2" placeholder="Add contact notes...">${notesText}</textarea>
+                  </div>
+                  <button id="marker-save-info-${h.id}" class="mt-1 w-full py-1.5 bg-gray-800 text-white text-[9px] font-black uppercase rounded hover:bg-black transition focus:outline-none">Save Info</button>
+                </div>
+
+                <button id="marker-draft-${h.id}" class="w-full py-2 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-lg hover:bg-indigo-700 transition focus:outline-none">Draft Email</button>
+              </div>
+            `, { className: 'custom-leaflet-popup' });
+
+            marker.on('popupopen', () => {
+              const draftBtn = document.getElementById(`marker-draft-${h.id}`);
+              if (draftBtn) {
+                draftBtn.onclick = () => {
+                  setSelectedHauler(h);
+                  setIsDrafting(true);
+                };
+              }
+
+              const saveBtn = document.getElementById(`marker-save-info-${h.id}`);
+              const notesArea = document.getElementById(`marker-notes-${h.id}`) as HTMLTextAreaElement;
+              const secInput = document.getElementById(`marker-sec-email-${h.id}`) as HTMLInputElement;
+              if (saveBtn && notesArea && secInput) {
+                saveBtn.onclick = () => {
+                  handleUpdateBrokerInfo(h, { 
+                    notes: notesArea.value,
+                    secondaryEmail: secInput.value
+                  });
+                  marker.closePopup();
+                };
+              }
+            });
+
+            markersRef.current.push(marker);
+            bounds.extend(h.coordinates!);
+            hasAnyMarkers = true;
+          } else {
+            // Render Cluster Marker
+            const count = cluster.haulers.length;
+            const namesList = cluster.haulers.slice(0, 5).map(x => x.name).join(', ') + (count > 5 ? ' and others' : '');
+            
+            const clusterMarker = L.marker(cluster.centroid, {
+              icon: L.divIcon({
+                className: 'custom-cluster-marker',
+                html: `<div class="bg-indigo-600 ring-4 ring-indigo-500/20 text-white w-10 h-10 rounded-full shadow-2xl flex items-center justify-center font-black text-xs cursor-pointer border-2 border-white hover:scale-110 hover:bg-indigo-700 transition-all duration-100" title="${namesList}">${count}</div>`,
+                iconSize: [40, 40],
+                iconAnchor: [20, 20]
+              })
+            }).addTo(map);
+
+            clusterMarker.on('click', () => {
+              const clusterBounds = L.latLngBounds(cluster.haulers.map(item => item.coordinates!));
+              map.fitBounds(clusterBounds, { padding: [50, 50] });
+            });
+
+            markersRef.current.push(clusterMarker);
+            cluster.haulers.forEach(h => bounds.extend(h.coordinates!));
+            hasAnyMarkers = true;
+          }
+        });
+
+        // Fit to search radius circle if searchCenterCoords and searchRadius are set,
+        // otherwise default to fitting existing markers if present.
+        if (searchCenterCoords && searchRadius) {
+          const radiusInMeters = Number(searchRadius) * 1609.344;
+          const dummyCircle = L.circle(searchCenterCoords, { radius: radiusInMeters });
+          map.fitBounds(dummyCircle.getBounds(), { padding: [20, 20] });
+        } else if (hasAnyMarkers) {
+          map.fitBounds(bounds, { padding: [50, 50] });
+        }
+      };
+
+      updateLayers();
+
+      map.on('zoomend', updateLayers);
+      map.on('moveend', updateLayers);
+
+      return () => {
+        map.off('zoomend', updateLayers);
+        map.off('moveend', updateLayers);
+      };
     }
-  }, [sortedHaulers, viewMode]);
+  }, [sortedHaulers, viewMode, searchCenterCoords, searchRadius, isDarkMode]);
 
   const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
 
@@ -691,6 +820,7 @@ const App: React.FC = () => {
     setClientRef('');
     setAccountInfo('');
     setSearchRadius('');
+    setSearchCenterCoords(null);
     setServiceAreaFilter('');
     setStateFilter('');
     setHaulerTypeFilter('all');
@@ -728,6 +858,13 @@ const App: React.FC = () => {
     setStateFilter(s.stateFilter || '');
     setClientRef(s.clientRef);
     setAccountInfo(s.accountInfo);
+    if (s.location) {
+      geocodeLocation(s.location).then(coords => {
+        if (coords) setSearchCenterCoords(coords);
+      });
+    } else {
+      setSearchCenterCoords(null);
+    }
     setShowSavedSearches(false);
     setImportFeedback(`Loaded criteria for ${s.name}`);
     setTimeout(() => setImportFeedback(null), 3000);
@@ -1078,6 +1215,9 @@ const App: React.FC = () => {
   const handleLocalSearch = () => {
     if (!location) return;
     recordSearchLocation(location);
+    geocodeLocation(location).then(coords => {
+      if (coords) setSearchCenterCoords(coords);
+    });
     setIsSearching(true);
     setSearchStatus("Querying Internal Broker Registry...");
     setSearchPhase(1);
@@ -1099,6 +1239,9 @@ const App: React.FC = () => {
   const handleDeepSearch = () => {
     if (!location) return;
     recordSearchLocation(location);
+    geocodeLocation(location).then(coords => {
+      if (coords) setSearchCenterCoords(coords);
+    });
     setIsSearching(true);
     setSearchStatus("Performing Deep Registry Scan...");
     setSearchPhase(1);
@@ -1114,7 +1257,7 @@ const App: React.FC = () => {
         // Also check for common waste management terms if location is a state
         const isStateSearch = locLower.length === 2;
         const stateKeywordMatch = isStateSearch && broker.notes?.toLowerCase().includes(locLower);
-        
+         
         return nameMatch || notesMatch || stateMatch || stateKeywordMatch;
       });
 
@@ -1306,7 +1449,7 @@ const App: React.FC = () => {
             <div className="flex items-center gap-3">
               <div className="bg-green-600 p-2 rounded-lg" aria-hidden="true"><TrashIcon className="w-6 h-6 text-white" /></div>
               <div>
-                <h1 className="text-xl font-bold tracking-tight">Hauler Hunter</h1>
+                <h1 className="text-xl font-bold tracking-tight">GeoHauler</h1>
                 <div className="flex items-center gap-1.5 text-[10px] text-gray-600 dark:text-gray-400 font-bold uppercase tracking-wider">
                   <span className={`w-1.5 h-1.5 rounded-full ${isOutlookConnected ? 'bg-green-500' : 'bg-red-500'} animate-pulse`} aria-hidden="true"></span>
                   Account: {SENDER_EMAIL}
